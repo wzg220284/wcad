@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>槽盘分布器布孔计算与可视化</title>
+    <style>
+        body { font-family: 'Microsoft YaHei', sans-serif; background-color: #f4f6f8; margin: 0; padding: 20px; display: flex; justify-content: center; color: #333; }
+        .container { width: 1200px; background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); display: flex; flex-direction: column; align-items: center; }
+        h2 { margin-top: 0; color: #2c3e50; margin-bottom: 20px; }
+        .dashboard { width: 100%; display: flex; justify-content: space-around; flex-wrap: wrap; gap: 15px; background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #e9ecef; box-sizing: border-box; }
+        .stat-box { text-align: center; flex: 1 1 12%; min-width: 90px; }
+        .stat-label { font-size: 13px; color: #6c757d; margin-bottom: 5px; }
+        .stat-value { font-size: 24px; font-weight: bold; color: #0d6efd; }
+
+        .main-content { display: flex; width: 100%; gap: 30px; }
+        .canvas-container { flex: 0 0 800px; height: 890px; border: 1px solid #e0e0e0; border-radius: 8px; background-color: #ffffff; display: flex; justify-content: center; align-items: center; position: relative; }
+        .controls { flex: 1; display: flex; flex-direction: column; gap: 8px; max-height: 890px; overflow-y: auto; padding-right: 5px; }
+        .control-group { display: flex; flex-direction: column; gap: 3px; }
+        .control-header { display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 500; }
+        .control-row { display: flex; align-items: center; gap: 10px; }
+        input[type="range"] { flex: 1; cursor: pointer; }
+        input[type="number"], input[type="text"] { width: 60px; padding: 5px; border: 1px solid #ccc; border-radius: 4px; text-align: center; }
+        .mode-toggles { display: flex; gap: 10px; margin-top: 2px; }
+        .mode-btn { flex: 1; padding: 6px; border: 1px solid #ced4da; background: #fff; border-radius: 6px; cursor: pointer; transition: all 0.2s; font-size: 13px; font-weight: bold; color: #495057; }
+        .mode-btn.active { background: #0d6efd; color: #fff; border-color: #0d6efd; }
+        
+        .calc-mode-box { background: #eef2f5; padding: 8px 10px; border-radius: 6px; margin-bottom: 2px; border: 1px solid #dce3e9; }
+        .calc-btn { width: 100%; padding: 10px; background: #198754; color: white; font-weight: bold; font-size: 15px; border: none; border-radius: 6px; cursor: pointer; margin-top: 6px; transition: background 0.2s; }
+        .calc-btn:hover { background: #157347; }
+        
+        /* 序列号状态显示样式：统一字重为 normal */
+        .license-status { font-size: 12px; font-weight: normal; color: #d9534f; background: #fdf0f0; padding: 2px 6px; border-radius: 4px; border: 1px solid #f5c6cb; }
+        
+        .controls::-webkit-scrollbar { width: 6px; }
+        .controls::-webkit-scrollbar-thumb { background-color: #ccc; border-radius: 4px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>槽盘分布器布孔计算与可视化</h2>
+    
+    <div class="dashboard">
+        <div class="stat-box">
+            <div class="stat-label">总孔数 (个)</div>
+            <div class="stat-value" id="totalHoles">0</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-label">总矩形数 (个)</div>
+            <div class="stat-value" id="totalRects">0</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-label">拼缝数量 (条)</div>
+            <div class="stat-value" id="totalSeams">0</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-label">流速 (m/s)</div>
+            <div class="stat-value" id="flowVelocity">0.00</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-label">点密度 (个/m²)</div>
+            <div class="stat-value" id="pointDensity">0</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-label">喷淋密度 (m³/m²)</div>
+            <div class="stat-value" id="sprayDensity">0.00</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-label">孔上液层高度 (mm)</div>
+            <div class="stat-value" id="liquidHeight">0</div>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="canvas-container">
+            <canvas id="layoutCanvas" width="800" height="800"></canvas>
+        </div>
+        
+        <div class="controls">
+            <!-- 序列号与计算模式控制区 -->
+            <div class="calc-mode-box">
+                <div class="control-group" style="margin-bottom: 6px;">
+                    <div class="control-header">
+                        <span style="color: #333; font-weight: bold;">序列号</span>
+                        <span class="license-status">
+                            剩余: <span id="remains">-</span> 次 | <span id="expireDays">-天</span>
+                        </span>
+                    </div>
+                    <div class="control-row">
+                        <input type="text" id="licenseKey" placeholder="请输入序列号" style="flex: 1; text-align: left;" value="TEST_KEY">
+                    </div>
+                </div>
+                <div class="control-group">
+                    <div class="control-header"><span>计算触发模式</span></div>
+                    <div class="control-row" style="font-size: 13px; margin-top: 3px;">
+                        <label><input type="radio" name="calcTrigger" value="manual" checked> 按键计算 (推荐)</label>
+                        <label><input type="radio" name="calcTrigger" value="auto"> 即时计算</label>
+                    </div>
+                    <div style="font-size: 11px; color: #888; margin-top: 2px;">注：即时模式下拖动滑块会快速消耗调用次数。</div>
+                </div>
+                <button class="calc-btn" id="btnCalculate">立即进行计算</button>
+            </div>
+
+            <!-- 原有参数控制 -->
+            <div class="control-group">
+                <div class="control-header"><span>直径 D (mm)</span></div>
+                <div class="control-row">
+                    <input type="range" id="D" min="300" max="6000" step="100" value="1200">
+                    <input type="number" id="D_num" step="100" value="1200">
+                </div>
+            </div>
+            <div class="control-group">
+                <div class="control-header"><span>边缘无效宽度 e (mm)</span></div>
+                <div class="control-row">
+                    <input type="range" id="e" min="20" max="150" value="90">
+                    <input type="number" id="e_num" value="90">
+                </div>
+            </div>
+            <div class="control-group" style="background: #fff8f8; padding: 6px 8px; border-radius: 6px; border: 1px solid #ffdfdf;">
+                <div class="control-header"><span style="color: #d9534f; font-weight: bold;">水平横梁数量 N</span></div>
+                <div class="control-row">
+                    <input type="range" id="N_beam" min="0" max="3" step="1" value="0">
+                    <input type="number" id="N_beam_num" value="0">
+                </div>
+                <div class="control-header" style="margin-top: 4px;"><span style="color: #d9534f; font-weight: bold;">单根横梁无效宽度 (mm)</span></div>
+                <div class="control-row">
+                    <input type="range" id="h_beam" min="20" max="300" step="10" value="120">
+                    <input type="number" id="h_beam_num" step="10" value="120">
+                </div>
+            </div>
+            <div class="control-group">
+                <div class="control-header"><span>单板矩形数 M</span></div>
+                <div class="control-row">
+                    <input type="range" id="M" min="1" max="8" value="2">
+                    <input type="number" id="M_num" value="2">
+                </div>
+            </div>
+            <div class="control-group">
+                <div class="control-header"><span>X向孔距 a (mm)</span></div>
+                <div class="control-row">
+                    <input type="range" id="a" min="30" max="150" step="5" value="50">
+                    <input type="number" id="a_num" step="5" value="50">
+                </div>
+            </div>
+            <div class="control-group">
+                <div class="control-header"><span>Y向孔距 b (mm)</span></div>
+                <div class="control-row">
+                    <input type="range" id="b" min="30" max="150" step="5" value="50">
+                    <input type="number" id="b_num" step="5" value="50">
+                </div>
+            </div>
+            <div class="control-group">
+                <div class="control-header"><span>板内矩形间距 c (mm)</span></div>
+                <div class="control-row">
+                    <input type="range" id="c" min="30" max="150" step="5" value="60">
+                    <input type="number" id="c_num" step="5" value="60">
+                </div>
+            </div>
+            <div class="control-group">
+                <div class="control-header"><span>拼缝处间距 d (mm)</span></div>
+                <div class="control-row">
+                    <input type="range" id="d" min="30" max="150" step="5" value="90">
+                    <input type="number" id="d_num" step="5" value="90">
+                </div>
+            </div>
+            <div class="control-group">
+                <div class="control-header"><span>体积流量 Q (m³/h)</span></div>
+                <div class="control-row">
+                    <input type="number" id="Q_num" value="13" style="flex: 1; text-align: left; padding: 4px 8px;">
+                </div>
+            </div>
+            <div class="control-group">
+                <div class="control-header"><span>孔径 (mm)</span></div>
+                <div class="control-row">
+                    <input type="range" id="dh" min="2" max="30" step="0.5" value="4">
+                    <input type="number" id="dh_num" step="0.5" value="4">
+                </div>
+            </div>
+            <div class="mode-toggles">
+                <button class="mode-btn active" id="modeBoard">中心为板<br>(奇数块板)</button>
+                <button class="mode-btn" id="modeSeam">中心为缝<br>(偶数块板)</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('layoutCanvas');
+    const ctx = canvas.getContext('2d');
+    let currentMode = '板';
+    
+    let calcTriggerMode = 'manual';
+
+    // Cloudflare Worker 地址
+    const apiUrl = "/api/fenbuqi"; 
+    
+    let renderTimer = null; 
+
+    // 绑定参数变更事件
+    const params = ['D', 'e', 'M', 'a', 'b', 'c', 'd', 'Q', 'dh', 'h_beam', 'N_beam'];
+    params.forEach(param => {
+        const slider = document.getElementById(param);
+        const numInput = document.getElementById(param + '_num');
+        
+        if (slider) { slider.addEventListener('input', (e) => { if(numInput) numInput.value = e.target.value; triggerRender(); }); }
+        if (numInput) { numInput.addEventListener('input', (e) => { if (slider) slider.value = e.target.value; triggerRender(); }); }
+    });
+
+    document.getElementById('modeBoard').addEventListener('click', (e) => { currentMode = '板'; e.target.classList.add('active'); document.getElementById('modeSeam').classList.remove('active'); triggerRender(); });
+    document.getElementById('modeSeam').addEventListener('click', (e) => { currentMode = '缝'; e.target.classList.add('active'); document.getElementById('modeBoard').classList.remove('active'); triggerRender(); });
+
+    // 监听计算模式单选框切换
+    document.querySelectorAll('input[name="calcTrigger"]').forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            calcTriggerMode = e.target.value;
+            const btn = document.getElementById('btnCalculate');
+            if(calcTriggerMode === 'manual') {
+                btn.style.display = 'block';
+            } else {
+                btn.style.display = 'none';
+            }
+        });
+    });
+
+    // 手动计算按钮点击事件
+    document.getElementById('btnCalculate').addEventListener('click', () => {
+        render(); 
+    });
+
+    function getVals() {
+        let vals = {};
+        params.forEach(p => {
+            const input = document.getElementById(p + '_num');
+            if(input) vals[p] = parseFloat(input.value);
+        });
+        vals.mode = currentMode;
+        vals.licenseKey = document.getElementById('licenseKey').value.trim();
+        return vals;
+    }
+
+    function triggerRender() {
+        if (calcTriggerMode === 'manual') return; 
+
+        if(renderTimer) clearTimeout(renderTimer);
+        renderTimer = setTimeout(() => { render(); }, 600); 
+    }
+
+    // 计算剩余天数的辅助函数
+    function calculateRemainingDays(expireDateStr) {
+        if (!expireDateStr) return "永久";
+        const expireDate = new Date(expireDateStr);
+        const now = new Date();
+        const diffTime = expireDate - now;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        return diffDays > 0 ? `${diffDays}天` : "已到期";
+    }
+
+    async function render() {
+        const v = getVals();
+        if (!v.licenseKey) {
+            alert("请先填写序列号！");
+            return;
+        }
+
+        try {
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(v) 
+            });
+            
+            const res = await response.json();
+
+            if(!response.ok) {
+                alert("校验失败: " + res.error);
+                return;
+            }
+            
+            // 更新统计数据
+            document.getElementById('totalHoles').innerText = res.stats.totalHoles;
+            document.getElementById('totalRects').innerText = res.stats.totalRects;
+            document.getElementById('totalSeams').innerText = res.stats.totalSeams;
+            document.getElementById('flowVelocity').innerText = res.stats.flowVel;
+            document.getElementById('pointDensity').innerText = res.stats.ptDensity;
+            document.getElementById('sprayDensity').innerText = res.stats.spDensity;
+            document.getElementById('liquidHeight').innerText = res.stats.liquidHeight;
+            
+            // 更新序列号后面的剩余次数与剩余天数
+            document.getElementById('remains').innerText = res.remainingCount;
+
+            if (res.remainingDays !== undefined) {
+                const daysVal = typeof res.remainingDays === 'number' ? `${res.remainingDays}天` : res.remainingDays;
+                document.getElementById('expireDays').innerText = daysVal;
+            } else if (res.expire) {
+                document.getElementById('expireDays').innerText = calculateRemainingDays(res.expire);
+            } else {
+                document.getElementById('expireDays').innerText = "永久";
+            }
+
+            drawCanvas(v, res.drawData);
+        } catch (error) {
+            console.error("云端计算失败:", error);
+            alert("网络错误或服务器异常，请检查网络设置。");
+        }
+    }
+
+    function drawCanvas(v, drawData) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const scale = (canvas.width - 100) / v.D; 
+        const cx = canvas.width / 2;
+        const cy = canvas.height / 2;
+        
+        const R = drawData.R;
+        const R_eff = drawData.R_eff;
+
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(cx, cy, R * scale, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.setLineDash([5, 5]); ctx.arc(cx, cy, R_eff * scale, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); 
+
+        if (drawData.beams.length > 0) {
+            ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, R * scale, 0, Math.PI * 2); ctx.clip(); 
+            drawData.beams.forEach(beam => {
+                ctx.fillStyle = 'rgba(217, 83, 79, 0.1)'; ctx.fillRect(0, cy + beam.top * scale, canvas.width, v.h_beam * scale);
+                ctx.strokeStyle = 'rgba(217, 83, 79, 0.5)'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+                ctx.beginPath(); ctx.moveTo(0, cy + beam.top * scale); ctx.lineTo(canvas.width, cy + beam.top * scale); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(0, cy + beam.bot * scale); ctx.lineTo(canvas.width, cy + beam.bot * scale); ctx.stroke();
+            });
+            ctx.restore(); ctx.setLineDash([]);
+        }
+
+        ctx.strokeStyle = 'rgba(255, 0, 0, 0.85)'; ctx.lineWidth = 0.3; ctx.setLineDash([5, 5]); 
+        ctx.beginPath(); ctx.moveTo(cx - R * scale, cy); ctx.lineTo(cx + R * scale, cy); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(cx, cy - R * scale); ctx.lineTo(cx, cy + R * scale); ctx.stroke(); ctx.setLineDash([]); 
+
+        ctx.strokeStyle = '#DAA520'; ctx.lineWidth = 2.5;
+        drawData.seams.forEach(seamX => {
+            const screenX = cx + seamX * scale;
+            const seamY_bound = Math.sqrt(Math.pow(R, 2) - Math.pow(seamX, 2));
+            ctx.beginPath(); ctx.moveTo(screenX, cy - seamY_bound * scale); ctx.lineTo(screenX, cy + seamY_bound * scale); ctx.stroke();
+        });
+
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)'; ctx.lineWidth = 1;
+        drawData.rects.forEach(rect => { ctx.strokeRect(cx + rect.x * scale, cy + rect.y * scale, rect.w * scale, rect.h * scale); });
+
+        ctx.fillStyle = '#000000';
+        drawData.holes.forEach(hole => { ctx.beginPath(); ctx.arc(cx + hole.x * scale, cy + hole.y * scale, 2, 0, Math.PI * 2); ctx.fill(); });
+
+        ctx.strokeStyle = '#666'; ctx.fillStyle = '#333'; ctx.lineWidth = 0.6; ctx.font = '12px Microsoft YaHei'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+        let dimY_D = cy + R * scale + 30;
+        ctx.beginPath(); ctx.moveTo(cx - R * scale, dimY_D - 4); ctx.lineTo(cx - R * scale, dimY_D + 4); ctx.moveTo(cx + R * scale, dimY_D - 4); ctx.lineTo(cx + R * scale, dimY_D + 4); ctx.moveTo(cx - R * scale, dimY_D); ctx.lineTo(cx + R * scale, dimY_D); ctx.stroke();
+        ctx.fillText(`直径 D = ${v.D}`, cx, dimY_D - 4);
+
+        const W_board_rects = v.M * v.a + (v.M - 1) * v.c; const W_board_seam = W_board_rects + v.d; 
+        let startX_board, endX_board;
+        if (currentMode === '板') { startX_board = -W_board_seam / 2; endX_board = W_board_seam / 2; } 
+        else { startX_board = 0; endX_board = W_board_seam; }
+        
+        let sx = cx + startX_board * scale; let ex = cx + endX_board * scale; let dimY_W = cy - R * scale - 20;
+        ctx.strokeStyle = 'rgba(0,0,0,0.15)'; ctx.setLineDash([3, 3]);
+        ctx.beginPath(); ctx.moveTo(sx, dimY_W); ctx.lineTo(sx, cy - R_eff * scale); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(ex, dimY_W); ctx.lineTo(ex, cy - R_eff * scale); ctx.stroke();
+        ctx.setLineDash([]); ctx.strokeStyle = '#666';
+        ctx.beginPath(); ctx.moveTo(sx, dimY_W - 4); ctx.lineTo(sx, dimY_W + 4); ctx.moveTo(ex, dimY_W - 4); ctx.lineTo(ex, dimY_W + 4); ctx.moveTo(sx, dimY_W); ctx.lineTo(ex, dimY_W); ctx.stroke();
+        ctx.fillText(`板宽 = ${W_board_seam}`, (sx + ex) / 2, dimY_W - 4);
+    }
+</script>
+
+</body>
+</html>
