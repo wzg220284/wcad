@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>筛板布孔计算与可视化</title>
+    <style>
+        body { font-family: 'Microsoft YaHei', sans-serif; background-color: #f4f6f8; margin: 0; padding: 20px; display: flex; justify-content: center; color: #333; }
+        .container { width: 1200px; background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); display: flex; flex-direction: column; align-items: center; }
+        h2 { margin-top: 0; color: #2c3e50; margin-bottom: 20px; }
+        
+        /* 顶部结果统计区布局 */
+        .dashboard { width: 100%; display: flex; justify-content: space-around; flex-wrap: wrap; gap: 15px; background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #e9ecef; box-sizing: border-box; }
+        .stat-box { text-align: center; flex: 1 1 30%; min-width: 150px; }
+        .stat-label { font-size: 14px; color: #6c757d; margin-bottom: 5px; font-weight: bold; }
+        .stat-value { font-size: 26px; font-weight: bold; color: #0d6efd; }
+
+        /* 左图右控布局 */
+        .main-content { display: flex; width: 100%; gap: 30px; }
+        .canvas-container { flex: 0 0 800px; height: 890px; border: 1px solid #e0e0e0; border-radius: 8px; background-color: #ffffff; display: flex; flex-direction: column; align-items: center; position: relative; padding: 10px; box-sizing: border-box; }
+        .controls { flex: 1; display: flex; flex-direction: column; gap: 8px; max-height: 890px; overflow-y: auto; padding-right: 5px; }
+        
+        /* 控件样式 */
+        .control-group { display: flex; flex-direction: column; gap: 3px; }
+        .control-header { display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 500; }
+        .control-row { display: flex; align-items: center; gap: 10px; }
+        input[type="range"] { flex: 1; cursor: pointer; }
+        input[type="number"], input[type="text"], select { width: 80px; padding: 5px; border: 1px solid #ccc; border-radius: 4px; text-align: center; font-family: inherit;}
+        select { width: 100%; text-align: left; }
+        
+        /* 序列号与计算按钮 */
+        .calc-mode-box { background: #eef2f5; padding: 10px; border-radius: 6px; margin-bottom: 5px; border: 1px solid #dce3e9; }
+        .calc-btn { width: 100%; padding: 10px; background: #198754; color: white; font-weight: bold; font-size: 15px; border: none; border-radius: 6px; cursor: pointer; margin-top: 6px; transition: background 0.2s; }
+        .calc-btn:hover { background: #157347; }
+        .license-status { font-size: 12px; font-weight: normal; color: #d9534f; background: #fdf0f0; padding: 2px 6px; border-radius: 4px; border: 1px solid #f5c6cb; }
+        
+        .controls::-webkit-scrollbar { width: 6px; }
+        .controls::-webkit-scrollbar-thumb { background-color: #ccc; border-radius: 4px; }
+        
+        /* 图例 */
+        .legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; margin-top: 10px; justify-content: center; }
+        .legend-item { display: flex; align-items: center; gap: 5px; }
+        .legend-color { width: 12px; height: 12px; border-radius: 2px; border: 1px solid #ccc; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>筛板布孔计算与可视化</h2>
+    
+    <!-- 顶部统计区 (模仿 fenbuqi 的 Dashboard) -->
+    <div class="dashboard">
+        <div class="stat-box">
+            <div class="stat-label">塔截面积 (m²)</div>
+            <div class="stat-value" id="resTotalArea">0.000 </div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-label">筛孔总数 (个)</div>
+            <div class="stat-value" id="resHoleCount">0 </div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-label">开孔率</div>
+            <div class="stat-value" id="resOpenRatio">0.00 %</div>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <!-- 左侧画布 -->
+        <div class="canvas-container">
+            <canvas id="trayCanvas" width="760" height="760"></canvas>
+            <div class="legend">
+                <div class="legend-item"><div class="legend-color" style="background:#a7f3d0;"></div>边缘盲区</div>
+                <div class="legend-item"><div class="legend-color" style="background:#fed7d7;"></div>降液管</div>
+                <div class="legend-item"><div class="legend-color" style="background:#feebc8;"></div>安定区</div>
+                <div class="legend-item"><div class="legend-color" style="background:#cbd5e0;"></div>水平拼缝</div>
+                <div class="legend-item"><div class="legend-color" style="background:#000000; border-radius:50%;"></div>有效筛孔</div>
+            </div>
+        </div>
+        
+        <!-- 右侧控制区 -->
+        <div class="controls">
+            <!-- 序列号模块 -->
+            <div class="calc-mode-box">
+                <div class="control-group" style="margin-bottom: 6px;">
+                    <div class="control-header">
+                        <span style="color: #333; font-weight: bold;">序列号</span>
+                        <span class="license-status">
+                            剩余: <span id="remains">-</span> 次 | <span id="expireDays">-天</span>
+                        </span>
+                    </div>
+                    <div class="control-row">
+                        <input type="text" id="licenseKey" placeholder="请输入序列号" style="flex: 1; text-align: left;" value="TEST_KEY">
+                    </div>
+                </div>
+                <div class="control-group">
+                    <div class="control-header"><span>计算触发模式</span></div>
+                    <div class="control-row" style="font-size: 13px; margin-top: 3px;">
+                        <label><input type="radio" name="calcTrigger" value="manual" checked> 按键计算</label>
+                        <label><input type="radio" name="calcTrigger" value="auto"> 即时计算</label>
+                    </div>
+                </div>
+                <button class="calc-btn" id="btnCalculate">立即进行计算</button>
+            </div>
+
+            <!-- 参数设置 -->
+            <div class="control-group" style="margin-top: 5px;">
+                <div class="control-header"><span>塔板选型</span></div>
+                <div class="control-row">
+                    <select id="trayType">
+                        <option value="single" selected>单溢流 (无中间降液管)</option>
+                        <option value="double">双溢流 (含中间降液管)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="control-group">
+                <div class="control-header"><span>网格方向</span></div>
+                <div class="control-row">
+                    <select id="gridDir">
+                        <option value="rotated" selected>正三角形 (右转90度)</option>
+                        <option value="normal">正三角形 (标准底边水平)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <div class="control-header"><span>塔径 (mm)</span></div>
+                <div class="control-row">
+                    <input type="range" id="trayDiameter" min="200" max="10000" step="100" value="1800">
+                    <input type="number" id="num_trayDiameter" step="100" value="1800">
+                </div>
+            </div>
+            
+            <div class="control-group" style="background: #fff8f8; padding: 6px 8px; border-radius: 6px; border: 1px solid #ffdfdf;">
+                <div class="control-header"><span style="color: #d9534f; font-weight: bold;">侧降液管占比 (%)</span></div>
+                <div class="control-row">
+                    <input type="range" id="downcomerRatio" min="1.0" max="35.0" step="0.1" value="8.8">
+                    <input type="number" id="num_downcomerRatio" step="0.1" value="8.8">
+                </div>
+                
+                <div id="centerDowncomerGroup" style="display: none; margin-top: 5px;">
+                    <div class="control-header"><span style="color: #d9534f; font-weight: bold;">中降液管占比 (%)</span></div>
+                    <div class="control-row">
+                        <input type="range" id="centerRatio" min="1.0" max="35.0" step="0.1" value="8.8">
+                        <input type="number" id="num_centerRatio" step="0.1" value="8.8">
+                    </div>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <div class="control-header"><span>孔径 (mm)</span></div>
+                <div class="control-row">
+                    <input type="range" id="holeDiameter" min="1" max="20" step="0.5" value="8">
+                    <input type="number" id="num_holeDiameter" step="0.5" value="8">
+                </div>
+            </div>
+
+            <div class="control-group">
+                <div class="control-header"><span>孔中心距 (mm)</span></div>
+                <div class="control-row">
+                    <input type="range" id="holePitch" min="2" max="50" step="1" value="15">
+                    <input type="number" id="num_holePitch" step="1" value="15">
+                </div>
+            </div>
+
+            <div class="control-group">
+                <div class="control-header"><span>边缘无孔区宽度 (mm)</span></div>
+                <div class="control-row">
+                    <input type="range" id="edgeMargin" min="0" max="150" value="94">
+                    <input type="number" id="num_edgeMargin" value="94">
+                </div>
+            </div>
+
+            <div class="control-group">
+                <div class="control-header"><span>水平拼缝带总宽 (mm)</span></div>
+                <div class="control-row">
+                    <input type="range" id="seamWidth" min="0" max="150" value="62">
+                    <input type="number" id="num_seamWidth" value="62">
+                </div>
+            </div>
+
+            <div class="control-group">
+                <div class="control-header"><span>堰侧安定区宽度 (mm)</span></div>
+                <div class="control-row">
+                    <input type="range" id="calmZone" min="0" max="150" value="100">
+                    <input type="number" id="num_calmZone" value="100">
+                </div>
+            </div>
+
+            <div class="control-group">
+                <div class="control-header"><span>塔板分块数</span></div>
+                <div class="control-row">
+                    <input type="range" id="numPanels" min="2" max="10" value="5">
+                    <input type="number" id="num_numPanels" value="5">
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('trayCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    let calcTriggerMode = 'manual';
+    let renderTimer = null; 
+    const apiUrl = "/api/shaiban"; // 指向你的 Worker 路由[cite: 1]
+
+    // 参数滑动条与数字框双向绑定[cite: 1, 3]
+    const paramsMap = ['trayDiameter', 'downcomerRatio', 'centerRatio', 'holeDiameter', 'holePitch', 'edgeMargin', 'seamWidth', 'calmZone', 'numPanels'];
+    
+    paramsMap.forEach(param => {
+        const slider = document.getElementById(param);
+        const numInput = document.getElementById('num_' + param);
+        
+        if (slider) { 
+            slider.addEventListener('input', (e) => { 
+                numInput.value = e.target.value; 
+                handleLinkage(param, e.target.value);
+                triggerRender(); 
+            }); 
+        }
+        if (numInput) { 
+            numInput.addEventListener('input', (e) => { 
+                slider.value = e.target.value; 
+                handleLinkage(param, e.target.value);
+                triggerRender(); 
+            }); 
+        }
+    });
+
+    // 处理中降液管联动[cite: 3]
+    function handleLinkage(param, value) {
+        if (param === 'downcomerRatio') {
+            document.getElementById('num_centerRatio').value = value;
+            document.getElementById('centerRatio').value = value;
+        }
+    }
+
+    // 处理下拉框变更
+    document.getElementById('trayType').addEventListener('change', (e) => {
+        document.getElementById('centerDowncomerGroup').style.display = e.target.value === 'double' ? 'block' : 'none';
+        triggerRender();
+    });
+    document.getElementById('gridDir').addEventListener('change', triggerRender);
+
+    // 计算模式单选框切换[cite: 1]
+    document.querySelectorAll('input[name="calcTrigger"]').forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            calcTriggerMode = e.target.value;
+            document.getElementById('btnCalculate').style.display = calcTriggerMode === 'manual' ? 'block' : 'none';
+        });
+    });
+
+    document.getElementById('btnCalculate').addEventListener('click', () => { render(); });
+
+    function getVals() {
+        let vals = {
+            licenseKey: document.getElementById('licenseKey').value.trim(),
+            trayType: document.getElementById('trayType').value,
+            gridDir: document.getElementById('gridDir').value
+        };
+        paramsMap.forEach(p => { vals[p] = parseFloat(document.getElementById('num_' + p).value) || 0; });
+        return vals;
+    }
+
+    function triggerRender() {
+        if (calcTriggerMode === 'manual') return; 
+        if(renderTimer) clearTimeout(renderTimer);
+        renderTimer = setTimeout(() => { render(); }, 600); 
+    }
+
+    function calculateRemainingDays(expireDateStr) {
+        if (!expireDateStr) return "永久";
+        const expireDate = new Date(expireDateStr);
+        const diffDays = Math.ceil((expireDate - new Date()) / (1000 * 60 * 60 * 24));
+        return diffDays > 0 ? `${diffDays}天` : "已到期";
+    }
+
+    // 向云端发起计算请求
+    async function render() {
+        const v = getVals();
+        if (!v.licenseKey) { alert("请先填写序列号！"); return; }
+
+        try {
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(v)
+            });
+            const res = await response.json();
+
+            if(!response.ok) { alert("校验失败: " + res.error); return; }
+            
+            // 更新看板数据[cite: 1, 3]
+            document.getElementById('resTotalArea').innerText = res.stats.totalArea + " m²";
+            document.getElementById('resHoleCount').innerText = res.stats.holeCount.toLocaleString() + " 个";
+            document.getElementById('resOpenRatio').innerText = res.stats.openRatio + " %";
+            
+            // 更新序列号状态[cite: 1]
+            document.getElementById('remains').innerText = res.remainingCount;
+            document.getElementById('expireDays').innerText = calculateRemainingDays(res.expire);
+
+            // 前端负责渲染画图
+            drawCanvas(v, res.drawData);
+        } catch (error) {
+            console.error("云端计算失败:", error);
+            alert("网络错误或服务器异常，请检查网络设置。");
+        }
+    }
+
+    // 纯渲染函数：不再进行排版运算，只负责视觉呈现[cite: 3]
+    function drawCanvas(v, data) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // 留白给标注
+        const scale = (canvas.width - 80) / (data.trayR * 2);
+        
+        ctx.save();
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+
+        // 1. 基底
+        ctx.beginPath(); ctx.arc(0, 0, data.trayR * scale, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff'; ctx.fill();
+        ctx.strokeStyle = '#a0aec0'; ctx.stroke();
+
+        // 2. 盲区
+        ctx.beginPath(); ctx.arc(0, 0, data.trayR * scale, 0, Math.PI * 2);
+        ctx.arc(0, 0, Math.max(0, data.innerR) * scale, 0, Math.PI * 2, true);
+        ctx.fillStyle = '#a7f3d0'; ctx.fill();
+
+        // 3. 降液管
+        ctx.save(); ctx.beginPath(); ctx.arc(0, 0, data.trayR * scale, 0, Math.PI * 2); ctx.clip(); 
+        ctx.fillStyle = '#fed7d7';
+        ctx.fillRect(-data.trayR * scale, -data.trayR * scale, Math.max(0, data.trayR - data.weirDist) * scale, data.trayR * 2 * scale);
+        ctx.fillRect(data.weirDist * scale, -data.trayR * scale, Math.max(0, data.trayR - data.weirDist) * scale, data.trayR * 2 * scale);
+        if (v.trayType === 'double') ctx.fillRect(-data.centerW/2 * scale, -data.trayR * scale, data.centerW * scale, data.trayR * 2 * scale);
+        ctx.restore();
+
+        // 4. 安定区
+        ctx.save(); ctx.beginPath(); ctx.arc(0, 0, data.trayR * scale, 0, Math.PI * 2); ctx.clip();
+        ctx.fillStyle = '#feebc8';
+        ctx.fillRect((-data.weirDist) * scale, -data.trayR * scale, data.calmZ * scale, data.trayR * 2 * scale);
+        ctx.fillRect((data.weirDist - data.calmZ) * scale, -data.trayR * scale, data.calmZ * scale, data.trayR * 2 * scale);
+        if (v.trayType === 'double') {
+            ctx.fillRect((-data.centerW/2 - data.calmZ) * scale, -data.trayR * scale, data.calmZ * scale, data.trayR * 2 * scale);
+            ctx.fillRect((data.centerW/2) * scale, -data.trayR * scale, data.calmZ * scale, data.trayR * 2 * scale);
+        }
+        ctx.restore();
+
+        // 5. 水平拼缝
+        ctx.save(); ctx.beginPath(); ctx.arc(0, 0, Math.max(0, data.innerR) * scale, 0, Math.PI * 2); ctx.clip();
+        ctx.fillStyle = '#cbd5e0';
+        const calmLeft = -data.weirDist + data.calmZ;
+        const calmRight = data.weirDist - data.calmZ;
+        for (let i = 0; i < data.panelsY.length - 1; i++) {
+            const ySeamBottom = data.panelsY[i].top;
+            if (v.trayType === 'single') {
+                if (calmRight - calmLeft > 0) ctx.fillRect(calmLeft * scale, ySeamBottom * scale, (calmRight - calmLeft) * scale, v.seamWidth * scale);
+            } else {
+                const seg1Right = -data.centerW/2 - data.calmZ;
+                if (seg1Right > calmLeft) ctx.fillRect(calmLeft * scale, ySeamBottom * scale, (seg1Right - calmLeft) * scale, v.seamWidth * scale);
+                const seg2Left = data.centerW/2 + data.calmZ;
+                if (calmRight > seg2Left) ctx.fillRect(seg2Left * scale, ySeamBottom * scale, (calmRight - seg2Left) * scale, v.seamWidth * scale);
+            }
+        }
+        ctx.restore();
+
+        // 6. 画孔 (直接使用后端传回的数组)
+        ctx.fillStyle = '#000000'; ctx.beginPath();
+        const drawSize = Math.max(0.5, v.holeDiameter * scale);
+        data.holes.forEach(hole => {
+            ctx.rect((hole.x * scale) - drawSize / 2, (hole.y * scale) - drawSize / 2, drawSize, drawSize);
+        });
+        ctx.fill();
+
+        // 7. 标注
+        ctx.save(); ctx.strokeStyle = '#e53e3e'; ctx.lineWidth = 1.5; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        
+        ctx.beginPath(); ctx.moveTo(0, -data.trayR * scale - 15); ctx.lineTo(0, data.trayR * scale + 15); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-6, -data.trayR * scale - 15); ctx.lineTo(6, -data.trayR * scale - 15); ctx.moveTo(-6, data.trayR * scale + 15); ctx.lineTo(6, data.trayR * scale + 15); ctx.stroke();
+        const textD = `Φ${Math.round(v.trayDiameter)}`; const metricsD = ctx.measureText(textD);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.85)'; ctx.fillRect(-metricsD.width / 2 - 4, -25, metricsD.width + 8, 20);
+        ctx.fillStyle = '#e53e3e'; ctx.fillText(textD, 0, -15);
+
+        const bowHeight = Math.round(data.trayR - data.weirDist);
+        if (bowHeight > 0) {
+            ctx.beginPath(); ctx.moveTo(data.weirDist * scale, 0); ctx.lineTo(data.trayR * scale, 0); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(data.weirDist * scale, -6); ctx.lineTo(data.weirDist * scale, 6); ctx.moveTo(data.trayR * scale, -6); ctx.lineTo(data.trayR * scale, 6); ctx.stroke();
+            const textH = `${bowHeight}`; const midX = (data.weirDist + data.trayR) / 2 * scale; const metricsH = ctx.measureText(textH);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.85)'; ctx.fillRect(midX - metricsH.width / 2 - 4, -22, metricsH.width + 8, 20);
+            ctx.fillStyle = '#e53e3e'; ctx.fillText(textH, midX, -12);
+        }
+        
+        if (v.trayType === 'double' && data.centerW > 0) {
+            const dimY = data.trayR * scale * 0.45;
+            ctx.beginPath(); ctx.moveTo(-data.centerW/2 * scale, dimY); ctx.lineTo(data.centerW/2 * scale, dimY); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(-data.centerW/2 * scale, dimY - 6); ctx.lineTo(-data.centerW/2 * scale, dimY + 6); ctx.moveTo(data.centerW/2 * scale, dimY - 6); ctx.lineTo(data.centerW/2 * scale, dimY + 6); ctx.stroke();
+            const textCW = `${Math.round(data.centerW)}`; const metricsCW = ctx.measureText(textCW);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.85)'; ctx.fillRect(-metricsCW.width / 2 - 4, dimY - 22, metricsCW.width + 8, 20);
+            ctx.fillStyle = '#e53e3e'; ctx.fillText(textCW, 0, dimY - 12);
+        }
+        ctx.restore(); ctx.restore();
+    }
+</script>
+</body>
+</html>
