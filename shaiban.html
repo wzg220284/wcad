@@ -292,8 +292,8 @@
             if(!response.ok) { alert("校验失败: " + res.error); return; }
             
             // 更新看板数据[cite: 1, 3]
-            document.getElementById('resTotalArea').innerText = res.stats.totalArea + " m²";
-            document.getElementById('resHoleCount').innerText = res.stats.holeCount.toLocaleString() + " 个";
+            document.getElementById('resTotalArea').innerText = res.stats.totalArea;
+            document.getElementById('resHoleCount').innerText = res.stats.holeCount.toLocaleString();
             document.getElementById('resOpenRatio').innerText = res.stats.openRatio + " %";
             
             // 更新序列号状态[cite: 1]
