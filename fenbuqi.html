@@ -365,6 +365,31 @@
         ctx.fillText(`板宽 = ${W_board_seam}`, (sx + ex) / 2, dimY_W - 4);
     }
 </script>
-
+<!-- 水印代码开始 -->
+<script>
+(function() {
+    var watermark = document.createElement('div');
+    watermark.style.position = 'fixed';
+    watermark.style.top = '0';
+    watermark.style.left = '0';
+    watermark.style.width = '100vw';
+    watermark.style.height = '100vh';
+    watermark.style.pointerEvents = 'none'; // 关键：确保鼠标点击可以穿透水印层
+    watermark.style.zIndex = '9999'; // 置于最顶层
+    
+    // SVG 水印设计：rgba(0,0,0,0.06) 实现了非常浅的灰色效果
+    var svg = `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200">
+        <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" 
+              transform="rotate(-30 160 100)" fill="rgba(0, 0, 0, 0.06)" 
+              font-size="22" font-family="Arial, sans-serif, 'Microsoft YaHei'">www.wcad.wang</text>
+    </svg>`;
+    
+    watermark.style.backgroundImage = 'url("data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg) + '")';
+    watermark.style.backgroundRepeat = 'repeat';
+    
+    document.body.appendChild(watermark);
+})();
+</script>
+<!-- 水印代码结束 -->
 </body>
 </html>
