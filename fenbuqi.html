@@ -320,7 +320,7 @@
         ctx.beginPath(); ctx.setLineDash([5, 5]); ctx.arc(cx, cy, R_eff * scale, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); 
 
         // 2. 新增：为边缘无效区（圆环）着色
-        ctx.fillStyle = '#a7f3d0'; // 这里使用了和横梁一致的半透明浅红色，您也可以改成 'rgba(200,200,200,0.3)' 等灰色
+        ctx.fillStyle = rgba(217, 83, 79, 0.1); // 这里使用了和横梁一致的半透明浅红色，您也可以改成 'rgba(200,200,200,0.3)' 等灰色
         ctx.beginPath();
         ctx.arc(cx, cy, R * scale, 0, Math.PI * 2, false);     // 顺时针绘制外圆
         ctx.arc(cx, cy, R_eff * scale, 0, Math.PI * 2, true);  // 逆时针绘制内圆
