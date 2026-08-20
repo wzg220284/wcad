@@ -327,7 +327,7 @@
         ctx.fill();                                            // 填充圆环 
 
         if (drawData.beams.length > 0) {
-            ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, R * scale, 0, Math.PI * 2); ctx.clip(); 
+            ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, R_eff * scale, 0, Math.PI * 2); ctx.clip(); 
             drawData.beams.forEach(beam => {
                 ctx.fillStyle = 'rgba(217, 83, 79, 0.1)'; ctx.fillRect(0, cy + beam.top * scale, canvas.width, v.h_beam * scale);
                 ctx.strokeStyle = 'rgba(217, 83, 79, 0.5)'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
