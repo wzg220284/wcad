@@ -416,7 +416,7 @@
         svgContent += `<line x1="${cx - outR}" y1="${dimY_D - 4}" x2="${cx - outR}" y2="${dimY_D + 4}" stroke="#666" stroke-width="0.6"/>`;
         svgContent += `<line x1="${cx + outR}" y1="${dimY_D - 4}" x2="${cx + outR}" y2="${dimY_D + 4}" stroke="#666" stroke-width="0.6"/>`;
         svgContent += `<line x1="${cx - outR}" y1="${dimY_D}" x2="${cx + outR}" y2="${dimY_D}" stroke="#666" stroke-width="0.6"/>`;
-        svgContent += `<text x="${cx}" y="${dimY_D - 8}" fill="#333" font-family="Microsoft YaHei" font-size="12" text-anchor="middle">直径 D = ${v.D}</text>`;
+        svgContent += `<text x="${cx}" y="${dimY_D - 8}" fill="#333" font-family="Microsoft YaHei" font-size="12" text-anchor="middle">Φ${v.D}</text>`;
 
         // 10. 绘制板宽尺寸线标注
         const W_board_rects = v.M * v.a + (v.M - 1) * v.c; 
@@ -440,7 +440,7 @@
         svgContent += `<line x1="${sx}" y1="${dimY_W - 4}" x2="${sx}" y2="${dimY_W + 4}" stroke="#666" stroke-width="0.6"/>`;
         svgContent += `<line x1="${ex}" y1="${dimY_W - 4}" x2="${ex}" y2="${dimY_W + 4}" stroke="#666" stroke-width="0.6"/>`;
         svgContent += `<line x1="${sx}" y1="${dimY_W}" x2="${ex}" y2="${dimY_W}" stroke="#666" stroke-width="0.6"/>`;
-        svgContent += `<text x="${(sx + ex) / 2}" y="${dimY_W - 8}" fill="#333" font-family="Microsoft YaHei" font-size="12" text-anchor="middle">板宽 = ${W_board_seam}</text>`;
+        svgContent += `<text x="${(sx + ex) / 2}" y="${dimY_W - 8}" fill="#333" font-family="Microsoft YaHei" font-size="12" text-anchor="middle">${W_board_seam}</text>`;
 
         svgCanvas.innerHTML = svgContent;
     }
