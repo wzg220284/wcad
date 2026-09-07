@@ -29,7 +29,7 @@
         .calc-btn { width: 100%; padding: 10px; background: #198754; color: white; font-weight: bold; font-size: 15px; border: none; border-radius: 6px; cursor: pointer; margin-top: 6px; transition: background 0.2s; }
         .calc-btn:hover { background: #157347; }
         
-        /* 序列号状态显示样式：统一字重为 normal */
+        /* 序列号状态显示样式 */
         .license-status { font-size: 12px; font-weight: normal; color: #d9534f; background: #fdf0f0; padding: 2px 6px; border-radius: 4px; border: 1px solid #f5c6cb; }
         
         .controls::-webkit-scrollbar { width: 6px; }
@@ -74,7 +74,7 @@
 
     <div class="main-content">
         <div class="canvas-container">
-            <canvas id="layoutCanvas" width="800" height="800"></canvas>
+            <svg id="layoutSvg" width="800" height="800" xmlns="http://www.w3.org/2000/svg"></svg>
         </div>
         
         <div class="controls">
@@ -102,7 +102,7 @@
                 <button class="calc-btn" id="btnCalculate">开始计算</button>
             </div>
 
-            <!-- 原有参数控制 -->
+            <!-- 参数控制 -->
             <div class="control-group">
                 <div class="control-header"><span>直径 D (mm)</span></div>
                 <div class="control-row">
@@ -186,10 +186,11 @@
 </div>
 
 <script>
-    const canvas = document.getElementById('layoutCanvas');
-    const ctx = canvas.getContext('2d');
+    const svgCanvas = document.getElementById('layoutSvg');
+    const canvasWidth = 800;
+    const canvasHeight = 800;
+
     let currentMode = '板';
-    
     let calcTriggerMode = 'manual';
 
     // Cloudflare Worker 地址
@@ -306,92 +307,123 @@
     }
 
     function drawCanvas(v, drawData) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        const scale = (canvas.width - 100) / v.D; 
-        const cx = canvas.width / 2;
-        const cy = canvas.height / 2;
+        const scale = (canvasWidth - 100) / v.D; 
+        const cx = canvasWidth / 2;
+        const cy = canvasHeight / 2;
         
         const R = drawData.R;
         const R_eff = drawData.R_eff;
+        const outR = R * scale;
+        const inR = R_eff * scale;
 
-        // 1. 绘制外圆和内圆的边框
-        ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)'; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.arc(cx, cy, R * scale, 0, Math.PI * 2); ctx.stroke();
-        ctx.beginPath(); ctx.setLineDash([5, 5]); ctx.arc(cx, cy, R_eff * scale, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); 
+        let svgContent = '';
 
-        // 2. 新增：为边缘无效区（圆环）着色
-        ctx.fillStyle = 'rgba(217, 83, 79, 0.1)'; // 这里使用了和横梁一致的半透明浅红色，您也可以改成 'rgba(200,200,200,0.3)' 等灰色
-        ctx.beginPath();
-        ctx.arc(cx, cy, R * scale, 0, Math.PI * 2, false);     // 顺时针绘制外圆
-        ctx.arc(cx, cy, R_eff * scale, 0, Math.PI * 2, true);  // 逆时针绘制内圆
-        ctx.fill();                                            // 填充圆环 
+        // 1. 定义遮罩(ClipPath)用于横梁裁剪
+        svgContent += `
+            <defs>
+                <clipPath id="innerCircleClip">
+                    <circle cx="${cx}" cy="${cy}" r="${inR}"/>
+                </clipPath>
+            </defs>
+        `;
 
-        if (drawData.beams.length > 0) {
-            ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, R_eff * scale, 0, Math.PI * 2); ctx.clip(); 
-            drawData.beams.forEach(beam => {
-                ctx.fillStyle = 'rgba(217, 83, 79, 0.1)'; ctx.fillRect(0, cy + beam.top * scale, canvas.width, v.h_beam * scale);
-                ctx.strokeStyle = 'rgba(217, 83, 79, 0.5)'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
-                ctx.beginPath(); ctx.moveTo(0, cy + beam.top * scale); ctx.lineTo(canvas.width, cy + beam.top * scale); ctx.stroke();
-                ctx.beginPath(); ctx.moveTo(0, cy + beam.bot * scale); ctx.lineTo(canvas.width, cy + beam.bot * scale); ctx.stroke();
-            });
-            ctx.restore(); ctx.setLineDash([]);
+        // 2. 绘制边缘无效区（圆环）着色
+        const ringMidR = (outR + inR) / 2;
+        const ringStrokeW = outR - inR;
+        if (ringStrokeW > 0) {
+            svgContent += `<circle cx="${cx}" cy="${cy}" r="${ringMidR}" stroke="rgba(217, 83, 79, 0.1)" stroke-width="${ringStrokeW}" fill="none"/>`;
         }
 
-        ctx.strokeStyle = 'rgba(255, 0, 0, 0.85)'; ctx.lineWidth = 0.3; ctx.setLineDash([5, 5]); 
-        ctx.beginPath(); ctx.moveTo(cx - R * scale, cy); ctx.lineTo(cx + R * scale, cy); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(cx, cy - R * scale); ctx.lineTo(cx, cy + R * scale); ctx.stroke(); ctx.setLineDash([]); 
+        // 3. 绘制外圆和内圆的边框
+        svgContent += `<circle cx="${cx}" cy="${cy}" r="${outR}" stroke="rgba(0,0,0,0.2)" stroke-width="1" fill="none"/>`;
+        svgContent += `<circle cx="${cx}" cy="${cy}" r="${inR}" stroke="rgba(0,0,0,0.2)" stroke-width="1" stroke-dasharray="5,5" fill="none"/>`;
 
-        ctx.strokeStyle = '#DAA520'; ctx.lineWidth = 2.5;
+        // 4. 绘制横梁 (被内圆Clip裁剪)
+        if (drawData.beams && drawData.beams.length > 0) {
+            svgContent += `<g clip-path="url(#innerCircleClip)">`;
+            drawData.beams.forEach(beam => {
+                const topY = cy + beam.top * scale;
+                const botY = cy + beam.bot * scale;
+                const h = v.h_beam * scale;
+                
+                svgContent += `<rect x="0" y="${topY}" width="${canvasWidth}" height="${h}" fill="rgba(217, 83, 79, 0.1)"/>`;
+                svgContent += `<line x1="0" y1="${topY}" x2="${canvasWidth}" y2="${topY}" stroke="rgba(217, 83, 79, 0.5)" stroke-width="1" stroke-dasharray="4,4"/>`;
+                svgContent += `<line x1="0" y1="${botY}" x2="${canvasWidth}" y2="${botY}" stroke="rgba(217, 83, 79, 0.5)" stroke-width="1" stroke-dasharray="4,4"/>`;
+            });
+            svgContent += `</g>`;
+        }
+
+        // 5. 绘制中心十字参考线
+        svgContent += `<line x1="${cx - outR}" y1="${cy}" x2="${cx + outR}" y2="${cy}" stroke="rgba(255, 0, 0, 0.85)" stroke-width="0.3" stroke-dasharray="5,5"/>`;
+        svgContent += `<line x1="${cx}" y1="${cy - outR}" x2="${cx}" y2="${cy + outR}" stroke="rgba(255, 0, 0, 0.85)" stroke-width="0.3" stroke-dasharray="5,5"/>`;
+
+        // 6. 绘制拼缝线
         drawData.seams.forEach(seamX => {
             const screenX = cx + seamX * scale;
-            const seamY_bound = Math.sqrt(Math.pow(R, 2) - Math.pow(seamX, 2));
-            ctx.beginPath(); ctx.moveTo(screenX, cy - seamY_bound * scale); ctx.lineTo(screenX, cy + seamY_bound * scale); ctx.stroke();
+            const seamY_bound = Math.sqrt(Math.max(0, Math.pow(R, 2) - Math.pow(seamX, 2))) * scale;
+            svgContent += `<line x1="${screenX}" y1="${cy - seamY_bound}" x2="${screenX}" y2="${cy + seamY_bound}" stroke="#DAA520" stroke-width="2.5"/>`;
         });
 
-        ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)'; ctx.lineWidth = 1;
-        drawData.rects.forEach(rect => { 
-    // 1. 绘制矩形边框
-    ctx.strokeRect(cx + rect.x * scale, cy + rect.y * scale, rect.w * scale, rect.h * scale); 
-    
-    // 2. 绘制标注行数 (居中显示在矩形内)
-    if (rect.rows) {
-        ctx.save();
-        ctx.fillStyle = 'rgba(13, 110, 253, 0.75)'; // 标注颜色 (深蓝色带透明度)，可按喜好更改
-        ctx.font = 'bold 12px Microsoft YaHei'; // 字体设置
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        
-        // 计算文本放置位置(矩形的中心)
-        const textX = cx + (rect.x + rect.w / 2) * scale;
-        const textY = cy + (rect.y + rect.h / 2) * scale;
-        
-        ctx.fillText(rect.rows, textX, textY);
-        ctx.restore();
-    }
+        // 7. 绘制单板矩形与行数文本
+        drawData.rects.forEach(rect => {
+            const rx = cx + rect.x * scale;
+            const ry = cy + rect.y * scale;
+            const rw = rect.w * scale;
+            const rh = rect.h * scale;
+            
+            // 矩形边框
+            svgContent += `<rect x="${rx}" y="${ry}" width="${rw}" height="${rh}" stroke="rgba(0,0,0,0.6)" stroke-width="1" fill="none"/>`;
+            
+            // 矩形内文本
+            if (rect.rows) {
+                const textX = rx + rw / 2;
+                const textY = ry + rh / 2;
+                svgContent += `<text x="${textX}" y="${textY}" fill="rgba(13, 110, 253, 0.75)" font-family="Microsoft YaHei" font-size="12" font-weight="bold" text-anchor="middle" dominant-baseline="central">${rect.rows}</text>`;
+            }
         });
 
-        ctx.fillStyle = '#000000';
-        drawData.holes.forEach(hole => { ctx.beginPath(); ctx.arc(cx + hole.x * scale, cy + hole.y * scale, 2, 0, Math.PI * 2); ctx.fill(); });
+        // 8. 绘制布孔点
+        let holesHtml = '';
+        drawData.holes.forEach(hole => {
+            holesHtml += `<circle cx="${cx + hole.x * scale}" cy="${cy + hole.y * scale}" r="2" fill="#000000"/>`;
+        });
+        svgContent += holesHtml;
 
-        ctx.strokeStyle = '#666'; ctx.fillStyle = '#333'; ctx.lineWidth = 0.6; ctx.font = '12px Microsoft YaHei'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-        let dimY_D = cy + R * scale + 30;
-        ctx.beginPath(); ctx.moveTo(cx - R * scale, dimY_D - 4); ctx.lineTo(cx - R * scale, dimY_D + 4); ctx.moveTo(cx + R * scale, dimY_D - 4); ctx.lineTo(cx + R * scale, dimY_D + 4); ctx.moveTo(cx - R * scale, dimY_D); ctx.lineTo(cx + R * scale, dimY_D); ctx.stroke();
-        ctx.fillText(`直径 D = ${v.D}`, cx, dimY_D - 4);
+        // 9. 绘制直径 D 的尺寸线标注
+        let dimY_D = cy + outR + 30;
+        svgContent += `<line x1="${cx - outR}" y1="${dimY_D - 4}" x2="${cx - outR}" y2="${dimY_D + 4}" stroke="#666" stroke-width="0.6"/>`;
+        svgContent += `<line x1="${cx + outR}" y1="${dimY_D - 4}" x2="${cx + outR}" y2="${dimY_D + 4}" stroke="#666" stroke-width="0.6"/>`;
+        svgContent += `<line x1="${cx - outR}" y1="${dimY_D}" x2="${cx + outR}" y2="${dimY_D}" stroke="#666" stroke-width="0.6"/>`;
+        svgContent += `<text x="${cx}" y="${dimY_D - 8}" fill="#333" font-family="Microsoft YaHei" font-size="12" text-anchor="middle">直径 D = ${v.D}</text>`;
 
-        const W_board_rects = v.M * v.a + (v.M - 1) * v.c; const W_board_seam = W_board_rects + v.d; 
+        // 10. 绘制板宽尺寸线标注
+        const W_board_rects = v.M * v.a + (v.M - 1) * v.c; 
+        const W_board_seam = W_board_rects + v.d; 
         let startX_board, endX_board;
-        if (currentMode === '板') { startX_board = -W_board_seam / 2; endX_board = W_board_seam / 2; } 
-        else { startX_board = 0; endX_board = W_board_seam; }
+        if (currentMode === '板') { 
+            startX_board = -W_board_seam / 2; 
+            endX_board = W_board_seam / 2; 
+        } else { 
+            startX_board = 0; 
+            endX_board = W_board_seam; 
+        }
         
-        let sx = cx + startX_board * scale; let ex = cx + endX_board * scale; let dimY_W = cy - R * scale - 20;
-        ctx.strokeStyle = 'rgba(0,0,0,0.15)'; ctx.setLineDash([3, 3]);
-        ctx.beginPath(); ctx.moveTo(sx, dimY_W); ctx.lineTo(sx, cy - R_eff * scale); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(ex, dimY_W); ctx.lineTo(ex, cy - R_eff * scale); ctx.stroke();
-        ctx.setLineDash([]); ctx.strokeStyle = '#666';
-        ctx.beginPath(); ctx.moveTo(sx, dimY_W - 4); ctx.lineTo(sx, dimY_W + 4); ctx.moveTo(ex, dimY_W - 4); ctx.lineTo(ex, dimY_W + 4); ctx.moveTo(sx, dimY_W); ctx.lineTo(ex, dimY_W); ctx.stroke();
-        ctx.fillText(`板宽 = ${W_board_seam}`, (sx + ex) / 2, dimY_W - 4);
+        let sx = cx + startX_board * scale; 
+        let ex = cx + endX_board * scale; 
+        let dimY_W = cy - outR - 20;
+
+        svgContent += `<line x1="${sx}" y1="${dimY_W}" x2="${sx}" y2="${cy - inR}" stroke="rgba(0,0,0,0.15)" stroke-width="1" stroke-dasharray="3,3"/>`;
+        svgContent += `<line x1="${ex}" y1="${dimY_W}" x2="${ex}" y2="${cy - inR}" stroke="rgba(0,0,0,0.15)" stroke-width="1" stroke-dasharray="3,3"/>`;
+        
+        svgContent += `<line x1="${sx}" y1="${dimY_W - 4}" x2="${sx}" y2="${dimY_W + 4}" stroke="#666" stroke-width="0.6"/>`;
+        svgContent += `<line x1="${ex}" y1="${dimY_W - 4}" x2="${ex}" y2="${dimY_W + 4}" stroke="#666" stroke-width="0.6"/>`;
+        svgContent += `<line x1="${sx}" y1="${dimY_W}" x2="${ex}" y2="${dimY_W}" stroke="#666" stroke-width="0.6"/>`;
+        svgContent += `<text x="${(sx + ex) / 2}" y="${dimY_W - 8}" fill="#333" font-family="Microsoft YaHei" font-size="12" text-anchor="middle">板宽 = ${W_board_seam}</text>`;
+
+        svgCanvas.innerHTML = svgContent;
     }
 </script>
+
 <!-- 水印代码开始 -->
 <script>
 (function() {
@@ -401,10 +433,9 @@
     watermark.style.left = '0';
     watermark.style.width = '100vw';
     watermark.style.height = '100vh';
-    watermark.style.pointerEvents = 'none'; // 关键：确保鼠标点击可以穿透水印层
-    watermark.style.zIndex = '9999'; // 置于最顶层
+    watermark.style.pointerEvents = 'none';
+    watermark.style.zIndex = '9999';
     
-    // SVG 水印设计：rgba(0,0,0,0.06) 实现了非常浅的灰色效果
     var svg = `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200">
         <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" 
               transform="rotate(-30 160 100)" fill="rgba(0, 0, 0, 0.04)" 
