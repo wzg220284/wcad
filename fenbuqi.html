@@ -349,7 +349,26 @@
         });
 
         ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)'; ctx.lineWidth = 1;
-        drawData.rects.forEach(rect => { ctx.strokeRect(cx + rect.x * scale, cy + rect.y * scale, rect.w * scale, rect.h * scale); });
+        drawData.rects.forEach(rect => { 
+    // 1. 绘制矩形边框
+    ctx.strokeRect(cx + rect.x * scale, cy + rect.y * scale, rect.w * scale, rect.h * scale); 
+    
+    // 2. 绘制标注行数 (居中显示在矩形内)
+    if (rect.rows) {
+        ctx.save();
+        ctx.fillStyle = 'rgba(13, 110, 253, 0.75)'; // 标注颜色 (深蓝色带透明度)，可按喜好更改
+        ctx.font = 'bold 12px Microsoft YaHei'; // 字体设置
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        
+        // 计算文本放置位置(矩形的中心)
+        const textX = cx + (rect.x + rect.w / 2) * scale;
+        const textY = cy + (rect.y + rect.h / 2) * scale;
+        
+        ctx.fillText(rect.rows, textX, textY);
+        ctx.restore();
+    }
+        });
 
         ctx.fillStyle = '#000000';
         drawData.holes.forEach(hole => { ctx.beginPath(); ctx.arc(cx + hole.x * scale, cy + hole.y * scale, 2, 0, Math.PI * 2); ctx.fill(); });
