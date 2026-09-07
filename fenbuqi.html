@@ -87,7 +87,6 @@
                             剩余: <span id="remains">-</span> 次 | <span id="expireDays">-天</span>
                         </span>
                     </div>
-                    <!-- 修改部分: 加入眼睛图标并设置为 password 类型 -->
                     <div class="control-row" style="position: relative;">
                         <input type="password" id="licenseKey" placeholder="请输入序列号" style="flex: 1; text-align: left; padding-right: 28px;" value="TEST_KEY">
                         <svg id="toggleKeyBtn" viewBox="0 0 24 24" style="position: absolute; right: 8px; width: 18px; height: 18px; fill: #999; cursor: pointer;">
@@ -103,7 +102,6 @@
                     </div>
                     <div style="font-size: 11px; color: #888; margin-top: 2px;">注：自动模式下每个参数的修改都会消耗剩余次数。</div>
                 </div>
-                <button class="calc-btn" id="btnCalculate">开始计算</button>
             </div>
 
             <!-- 参数控制 -->
@@ -185,6 +183,9 @@
                 <button class="mode-btn active" id="modeBoard">中心为板<br>(奇数块板)</button>
                 <button class="mode-btn" id="modeSeam">中心为缝<br>(偶数块板)</button>
             </div>
+
+            <!-- 将计算按钮移动到此处，处于控制面板的最底部 -->
+            <button class="calc-btn" id="btnCalculate">开始计算</button>
         </div>
     </div>
 </div>
@@ -233,7 +234,7 @@
         render(); 
     });
 
-    // --- 修改部分: 序列号掩码显示切换逻辑 ---
+    // 序列号掩码显示切换逻辑
     const toggleKeyBtn = document.getElementById('toggleKeyBtn');
     const licenseKeyInput = document.getElementById('licenseKey');
 
@@ -249,7 +250,6 @@
             toggleKeyBtn.querySelector('path').setAttribute('d', eyeClosedPath);
         }
     });
-    // --- 结束 ---
 
     function getVals() {
         let vals = {};
