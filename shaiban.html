@@ -434,10 +434,10 @@
         }
         content += `</g>`;
 
-        const drawSize = Math.max(0.5, v.holeDiameter * scale);
+        const radius = Math.max(0.25, (v.holeDiameter * scale) / 2);
         let holesHtml = "";
         data.holes.forEach(hole => {
-            holesHtml += `<rect x="${cx + (hole.x * scale) - drawSize/2}" y="${cy + (hole.y * scale) - drawSize/2}" width="${drawSize}" height="${drawSize}" fill="#000000" />`;
+        holesHtml += `<circle cx="${cx + (hole.x * scale)}" cy="${cy + (hole.y * scale)}" r="${radius}" fill="#000000" />`;
         });
         content += holesHtml;
 
