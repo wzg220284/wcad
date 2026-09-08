@@ -68,7 +68,6 @@
     <div class="main-content">
         <!-- 左侧矢量图区域 -->
         <div class="canvas-container">
-            <!-- 改为 SVG 渲染 -->
             <svg id="traySvg" width="760" height="760" viewBox="0 0 760 760" xmlns="http://www.w3.org/2000/svg"></svg>
             <div class="legend">
                 <div class="legend-item"><div class="legend-color" style="background:#a7f3d0;"></div>边缘盲区</div>
@@ -90,9 +89,11 @@
                             剩余: <span id="remains">-</span> 次 | <span id="expireDays">-天</span>
                         </span>
                     </div>
-                    <div class="control-row">
-                        <!-- type改为password，防截图泄露 -->
-                        <input type="password" id="licenseKey" placeholder="请输入序列号" style="flex: 1; text-align: left;" value="TEST_KEY">
+                    <div class="control-row" style="position: relative;">
+                        <input type="password" id="licenseKey" placeholder="请输入序列号" style="flex: 1; text-align: left; padding-right: 28px;" value="TEST_KEY">
+                        <svg id="toggleKeyBtn" viewBox="0 0 24 24" style="position: absolute; right: 8px; width: 18px; height: 18px; fill: #999; cursor: pointer;">
+                            <path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/>
+                        </svg>
                     </div>
                 </div>
                 <div class="control-group">
@@ -139,13 +140,11 @@
                     <input type="number" id="num_downcomerRatio" step="0.1" value="8.8">
                 </div>
                 
-                <!-- 中降液管灰化显示支持 -->
-                <div id="centerDowncomerGroup" style="margin-top: 5px; opacity: 0.5; transition: opacity 0.3s;">
-                    <div class="control-header"><span style="color: #d9534f; font-weight: bold;">中降液管占比 (%)</span></div>
-                    <div class="control-row">
-                        <input type="range" id="centerRatio" min="1.0" max="35.0" step="0.1" value="8.8" disabled>
-                        <input type="number" id="num_centerRatio" step="0.1" value="8.8" disabled>
-                    </div>
+                <!-- 中降液管占比设置（支持统一灰化逻辑） -->
+                <div class="control-header" style="margin-top: 4px;"><span id="centerRatioLabel" style="color: #d9534f; font-weight: bold;">中降液管占比 (%)</span></div>
+                <div class="control-row">
+                    <input type="range" id="centerRatio" min="1.0" max="35.0" step="0.1" value="8.8" disabled>
+                    <input type="number" id="num_centerRatio" step="0.1" value="8.8" disabled>
                 </div>
             </div>
 
@@ -206,7 +205,7 @@
 <script>
     let calcTriggerMode = 'manual';
     let renderTimer = null; 
-    const apiUrl = "/api/shaiban"; // 指向你的 Worker 路由
+    const apiUrl = "/api/shaiban";
 
     // 参数滑动条与数字框双向绑定
     const paramsMap = ['trayDiameter', 'downcomerRatio', 'centerRatio', 'holeDiameter', 'holePitch', 'edgeMargin', 'seamWidth', 'calmZone', 'numPanels'];
@@ -217,40 +216,67 @@
         
         if (slider) { 
             slider.addEventListener('input', (e) => { 
-                numInput.value = e.target.value; 
+                if(numInput) numInput.value = e.target.value; 
                 handleLinkage(param, e.target.value);
                 triggerRender(); 
             }); 
         }
         if (numInput) { 
             numInput.addEventListener('input', (e) => { 
-                slider.value = e.target.value; 
+                if(slider) slider.value = e.target.value; 
                 handleLinkage(param, e.target.value);
                 triggerRender(); 
             }); 
         }
     });
 
-    // 处理中降液管联动
+    // 处理侧降液管与中降液管初始联动
     function handleLinkage(param, value) {
         if (param === 'downcomerRatio') {
-            document.getElementById('num_centerRatio').value = value;
-            document.getElementById('centerRatio').value = value;
+            const centerSlider = document.getElementById('centerRatio');
+            const centerNum = document.getElementById('num_centerRatio');
+            if(centerSlider && !centerSlider.disabled) {
+                centerSlider.value = value;
+                centerNum.value = value;
+            }
         }
     }
 
-    // 处理下拉框变更及界面灰化
-    document.getElementById('trayType').addEventListener('change', (e) => {
-        const isDouble = e.target.value === 'double';
-        const centerGroup = document.getElementById('centerDowncomerGroup');
+    // 中降液管灰化样式控制函数（参照分布器样式）
+    function toggleCenterRatioInput() {
+        const trayTypeVal = document.getElementById('trayType').value;
+        const isDouble = (trayTypeVal === 'double');
+        
         const centerSlider = document.getElementById('centerRatio');
         const centerNum = document.getElementById('num_centerRatio');
+        const centerLabel = document.getElementById('centerRatioLabel');
         
-        // 动态修改透明度与禁用状态
-        centerGroup.style.opacity = isDouble ? '1' : '0.5';
         centerSlider.disabled = !isDouble;
         centerNum.disabled = !isDouble;
         
+        if (!isDouble) {
+            centerLabel.style.color = '#a0a0a0';
+            centerSlider.style.opacity = '0.4';
+            centerSlider.style.cursor = 'not-allowed';
+            centerNum.style.backgroundColor = '#e9ecef';
+            centerNum.style.color = '#a0a0a0';
+            centerNum.style.cursor = 'not-allowed';
+        } else {
+            centerLabel.style.color = '#d9534f';
+            centerSlider.style.opacity = '1';
+            centerSlider.style.cursor = 'pointer';
+            centerNum.style.backgroundColor = '';
+            centerNum.style.color = '';
+            centerNum.style.cursor = 'text';
+        }
+    }
+
+    // 初始化运行一次灰化检测
+    toggleCenterRatioInput();
+
+    // 塔板选型切换事件
+    document.getElementById('trayType').addEventListener('change', (e) => {
+        toggleCenterRatioInput();
         triggerRender();
     });
     
@@ -260,11 +286,29 @@
     document.querySelectorAll('input[name="calcTrigger"]').forEach(radio => {
         radio.addEventListener('change', (e) => {
             calcTriggerMode = e.target.value;
-            document.getElementById('btnCalculate').style.display = calcTriggerMode === 'manual' ? 'block' : 'none';
+            const btn = document.getElementById('btnCalculate');
+            btn.style.display = calcTriggerMode === 'manual' ? 'block' : 'none';
         });
     });
 
     document.getElementById('btnCalculate').addEventListener('click', () => { render(); });
+
+    // 序列号小眼睛显隐切换逻辑
+    const toggleKeyBtn = document.getElementById('toggleKeyBtn');
+    const licenseKeyInput = document.getElementById('licenseKey');
+
+    const eyeOpenPath = 'M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z';
+    const eyeClosedPath = 'M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z';
+
+    toggleKeyBtn.addEventListener('click', () => {
+        if (licenseKeyInput.type === 'password') {
+            licenseKeyInput.type = 'text';
+            toggleKeyBtn.querySelector('path').setAttribute('d', eyeOpenPath);
+        } else {
+            licenseKeyInput.type = 'password';
+            toggleKeyBtn.querySelector('path').setAttribute('d', eyeClosedPath);
+        }
+    });
 
     function getVals() {
         let vals = {
@@ -289,7 +333,6 @@
         return diffDays > 0 ? `${diffDays}天` : "已到期";
     }
 
-    // 向云端发起计算请求
     async function render() {
         const v = getVals();
         if (!v.licenseKey) { alert("请先填写序列号！"); return; }
@@ -304,16 +347,13 @@
 
             if(!response.ok) { alert("校验失败: " + res.error); return; }
             
-            // 更新看板数据
             document.getElementById('resTotalArea').innerText = res.stats.totalArea;
             document.getElementById('resHoleCount').innerText = res.stats.holeCount.toLocaleString();
             document.getElementById('resOpenRatio').innerText = res.stats.openRatio + " %";
             
-            // 更新序列号状态
             document.getElementById('remains').innerText = res.remainingCount;
             document.getElementById('expireDays').innerText = calculateRemainingDays(res.expire);
 
-            // 前端负责渲染 SVG 画图
             drawSVG(v, res.drawData);
         } catch (error) {
             console.error("云端计算失败:", error);
@@ -321,17 +361,13 @@
         }
     }
 
-    // 纯渲染函数：改为生成并插入 SVG 节点
     function drawSVG(v, data) {
         const svg = document.getElementById('traySvg');
         const w = 760, h = 760;
         
-        // 留白给标注计算缩放比例
         const scale = (w - 80) / (data.trayR * 2);
-        
-        // 坐标系中心平移
         const cx = w / 2;
-        const cy = h / 2 - 15; // 稍微整体上移一点，给下方的直径标注留空间
+        const cy = h / 2 - 15;
         
         const R = data.trayR * scale;
         const innerR = Math.max(0, data.innerR) * scale;
@@ -339,7 +375,6 @@
         const centerW = (data.centerW || 0) * scale;
         const calmZ = data.calmZ * scale;
         
-        // 准备 SVG 字符串拼接，利用 DOM 特性高性能渲染
         let content = `<defs>
             <clipPath id="trayClip">
                 <circle cx="${cx}" cy="${cy}" r="${R}" />
@@ -353,13 +388,9 @@
             </mask>
         </defs>`;
 
-        // 1. 基底
         content += `<circle cx="${cx}" cy="${cy}" r="${R}" fill="#ffffff" stroke="#a0aec0" stroke-width="1" />`;
-
-        // 2. 盲区 (通过 mask 实现圆环效果)
         content += `<circle cx="${cx}" cy="${cy}" r="${R}" fill="#a7f3d0" mask="url(#blindMask)" />`;
 
-        // 3. 降液管 (#fed7d7)
         content += `<g clip-path="url(#trayClip)">`;
         const topY = cy - R;
         const fullHeight = R * 2;
@@ -371,7 +402,6 @@
         }
         content += `</g>`;
 
-        // 4. 安定区 (#feebc8)
         content += `<g clip-path="url(#trayClip)">`;
         content += `<rect x="${cx - weirDist}" y="${topY}" width="${calmZ}" height="${fullHeight}" fill="#feebc8" />`;
         content += `<rect x="${cx + weirDist - calmZ}" y="${topY}" width="${calmZ}" height="${fullHeight}" fill="#feebc8" />`;
@@ -381,7 +411,6 @@
         }
         content += `</g>`;
 
-        // 5. 水平拼缝 (#cbd5e0)
         content += `<g clip-path="url(#innerClip)">`;
         const calmLeft = -data.weirDist + data.calmZ;
         const calmRight = data.weirDist - data.calmZ;
@@ -405,7 +434,6 @@
         }
         content += `</g>`;
 
-        // 6. 画孔
         const drawSize = Math.max(0.5, v.holeDiameter * scale);
         let holesHtml = "";
         data.holes.forEach(hole => {
@@ -413,28 +441,20 @@
         });
         content += holesHtml;
 
-        // 7. 标注区域
         const strokeColor = "#e53e3e";
-        
-        // ---- 修改1: 直径标注移到底部水平方向 ----
-        const annotY = cy + R + 25; // 置于圆圈下方 25px 处
+        const annotY = cy + R + 25; 
         content += `<g stroke="${strokeColor}" stroke-width="1.5">`;
-        // 两侧向下延长的虚线引线
         content += `<line x1="${cx - R}" y1="${cy}" x2="${cx - R}" y2="${annotY + 10}" stroke-dasharray="4,4" opacity="0.6"/>`;
         content += `<line x1="${cx + R}" y1="${cy}" x2="${cx + R}" y2="${annotY + 10}" stroke-dasharray="4,4" opacity="0.6"/>`;
-        // 水平主线
         content += `<line x1="${cx - R}" y1="${annotY}" x2="${cx + R}" y2="${annotY}" />`;
-        // 两端的小竖线标志
         content += `<line x1="${cx - R}" y1="${annotY - 6}" x2="${cx - R}" y2="${annotY + 6}" />`;
         content += `<line x1="${cx + R}" y1="${annotY - 6}" x2="${cx + R}" y2="${annotY + 6}" />`;
         content += `</g>`;
         
         const textD = `Φ${Math.round(v.trayDiameter)}`;
-        // 文字背景白底
         content += `<rect x="${cx - 30}" y="${annotY - 10}" width="60" height="20" fill="rgba(255,255,255,0.85)" rx="3" />`;
         content += `<text x="${cx}" y="${annotY}" fill="${strokeColor}" font-size="13" font-weight="bold" font-family="sans-serif" text-anchor="middle" dominant-baseline="central">${textD}</text>`;
 
-        // 弓形宽度标注
         const bowHeight = Math.round(data.trayR - data.weirDist);
         if (bowHeight > 0) {
             const bx1 = cx + weirDist;
@@ -450,7 +470,6 @@
             content += `<text x="${midX}" y="${cy}" fill="${strokeColor}" font-size="13" font-weight="bold" font-family="sans-serif" text-anchor="middle" dominant-baseline="central">${textH}</text>`;
         }
         
-        // 中心降液管标注
         if (v.trayType === 'double' && data.centerW > 0) {
             const dimY = cy + R * 0.45;
             const cwLeft = cx - centerW / 2;
@@ -465,10 +484,10 @@
             content += `<text x="${cx}" y="${dimY}" fill="${strokeColor}" font-size="13" font-weight="bold" font-family="sans-serif" text-anchor="middle" dominant-baseline="central">${textCW}</text>`;
         }
 
-        // 一次性渲染进 DOM 中
         svg.innerHTML = content;
     }
 </script>
+
 <!-- 水印代码开始 -->
 <script>
 (function() {
