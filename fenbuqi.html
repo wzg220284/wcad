@@ -125,7 +125,8 @@
                     <input type="range" id="N_beam" min="0" max="3" step="1" value="0">
                     <input type="number" id="N_beam_num" value="0">
                 </div>
-                <div class="control-header" style="margin-top: 4px;"><span style="color: #d9534f; font-weight: bold;">单根横梁无效宽度 (mm)</span></div>
+                <!-- 增加id: h_beam_label -->
+                <div class="control-header" style="margin-top: 4px;"><span id="h_beam_label" style="color: #d9534f; font-weight: bold;">单根横梁无效宽度 (mm)</span></div>
                 <div class="control-row">
                     <input type="range" id="h_beam" min="20" max="300" step="10" value="120">
                     <input type="number" id="h_beam_num" step="10" value="120">
@@ -203,15 +204,59 @@
     
     let renderTimer = null; 
 
+    // 新增：横梁宽度输入框的禁用/启用逻辑
+    function toggleBeamWidthInput() {
+        const nVal = parseInt(document.getElementById('N_beam').value, 10);
+        const isZero = (nVal === 0);
+        
+        const hBeamSlider = document.getElementById('h_beam');
+        const hBeamNum = document.getElementById('h_beam_num');
+        const hBeamLabel = document.getElementById('h_beam_label');
+        
+        hBeamSlider.disabled = isZero;
+        hBeamNum.disabled = isZero;
+        
+        if (isZero) {
+            hBeamLabel.style.color = '#a0a0a0'; // 灰化文字
+            hBeamSlider.style.opacity = '0.4'; // 滑块变透明
+            hBeamSlider.style.cursor = 'not-allowed';
+            hBeamNum.style.backgroundColor = '#e9ecef'; // 输入框背景变灰
+            hBeamNum.style.color = '#a0a0a0';
+            hBeamNum.style.cursor = 'not-allowed';
+        } else {
+            hBeamLabel.style.color = '#d9534f'; // 恢复高亮红色
+            hBeamSlider.style.opacity = '1';
+            hBeamSlider.style.cursor = 'pointer';
+            hBeamNum.style.backgroundColor = '';
+            hBeamNum.style.color = '';
+            hBeamNum.style.cursor = 'text';
+        }
+    }
+
     // 绑定参数变更事件
     const params = ['D', 'e', 'M', 'a', 'b', 'c', 'd', 'Q', 'dh', 'h_beam', 'N_beam'];
     params.forEach(param => {
         const slider = document.getElementById(param);
         const numInput = document.getElementById(param + '_num');
         
-        if (slider) { slider.addEventListener('input', (e) => { if(numInput) numInput.value = e.target.value; triggerRender(); }); }
-        if (numInput) { numInput.addEventListener('input', (e) => { if (slider) slider.value = e.target.value; triggerRender(); }); }
+        if (slider) { 
+            slider.addEventListener('input', (e) => { 
+                if(numInput) numInput.value = e.target.value; 
+                if(param === 'N_beam') toggleBeamWidthInput(); // 如果是横梁数量，触发灰化检测
+                triggerRender(); 
+            }); 
+        }
+        if (numInput) { 
+            numInput.addEventListener('input', (e) => { 
+                if (slider) slider.value = e.target.value; 
+                if(param === 'N_beam') toggleBeamWidthInput(); // 如果是横梁数量，触发灰化检测
+                triggerRender(); 
+            }); 
+        }
     });
+
+    // 页面加载完成后立即调用一次，确保初始状态正确
+    toggleBeamWidthInput();
 
     document.getElementById('modeBoard').addEventListener('click', (e) => { currentMode = '板'; e.target.classList.add('active'); document.getElementById('modeSeam').classList.remove('active'); triggerRender(); });
     document.getElementById('modeSeam').addEventListener('click', (e) => { currentMode = '缝'; e.target.classList.add('active'); document.getElementById('modeBoard').classList.remove('active'); triggerRender(); });
