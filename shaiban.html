@@ -18,19 +18,20 @@
         /* 左图右控布局 */
         .main-content { display: flex; width: 100%; gap: 30px; }
         .canvas-container { flex: 0 0 800px; height: 890px; border: 1px solid #e0e0e0; border-radius: 8px; background-color: #ffffff; display: flex; flex-direction: column; align-items: center; position: relative; padding: 10px; box-sizing: border-box; }
-        .controls { flex: 1; display: flex; flex-direction: column; gap: 8px; max-height: 890px; overflow-y: auto; padding-right: 5px; }
+        .controls { flex: 1; display: flex; flex-direction: column; gap: 8px; max-height: 890px; overflow-y: auto; padding-right: 5px; position: relative;}
         
         /* 控件样式 */
         .control-group { display: flex; flex-direction: column; gap: 3px; }
         .control-header { display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 500; }
         .control-row { display: flex; align-items: center; gap: 10px; }
         input[type="range"] { flex: 1; cursor: pointer; }
-        input[type="number"], input[type="text"], select { width: 80px; padding: 5px; border: 1px solid #ccc; border-radius: 4px; text-align: center; font-family: inherit;}
+        input[type="number"], input[type="password"], input[type="text"], select { width: 80px; padding: 5px; border: 1px solid #ccc; border-radius: 4px; text-align: center; font-family: inherit;}
         select { width: 100%; text-align: left; }
+        input:disabled { background-color: #e9ecef; cursor: not-allowed; }
         
         /* 序列号与计算按钮 */
         .calc-mode-box { background: #eef2f5; padding: 10px; border-radius: 6px; margin-bottom: 5px; border: 1px solid #dce3e9; }
-        .calc-btn { width: 100%; padding: 10px; background: #198754; color: white; font-weight: bold; font-size: 15px; border: none; border-radius: 6px; cursor: pointer; margin-top: 6px; transition: background 0.2s; }
+        .calc-btn { width: 100%; padding: 12px; background: #198754; color: white; font-weight: bold; font-size: 16px; border: none; border-radius: 6px; cursor: pointer; margin-top: auto; transition: background 0.2s; }
         .calc-btn:hover { background: #157347; }
         .license-status { font-size: 12px; font-weight: normal; color: #d9534f; background: #fdf0f0; padding: 2px 6px; border-radius: 4px; border: 1px solid #f5c6cb; }
         
@@ -48,7 +49,7 @@
 <div class="container">
     <h2>筛板布孔计算与可视化</h2>
     
-    <!-- 顶部统计区 (模仿 fenbuqi 的 Dashboard) -->
+    <!-- 顶部统计区 -->
     <div class="dashboard">
         <div class="stat-box">
             <div class="stat-label">塔截面积 (m²)</div>
@@ -65,9 +66,10 @@
     </div>
 
     <div class="main-content">
-        <!-- 左侧画布 -->
+        <!-- 左侧矢量图区域 -->
         <div class="canvas-container">
-            <canvas id="trayCanvas" width="760" height="760"></canvas>
+            <!-- 改为 SVG 渲染 -->
+            <svg id="traySvg" width="760" height="760" viewBox="0 0 760 760" xmlns="http://www.w3.org/2000/svg"></svg>
             <div class="legend">
                 <div class="legend-item"><div class="legend-color" style="background:#a7f3d0;"></div>边缘盲区</div>
                 <div class="legend-item"><div class="legend-color" style="background:#fed7d7;"></div>降液管</div>
@@ -89,7 +91,8 @@
                         </span>
                     </div>
                     <div class="control-row">
-                        <input type="text" id="licenseKey" placeholder="请输入序列号" style="flex: 1; text-align: left;" value="TEST_KEY">
+                        <!-- type改为password，防截图泄露 -->
+                        <input type="password" id="licenseKey" placeholder="请输入序列号" style="flex: 1; text-align: left;" value="TEST_KEY">
                     </div>
                 </div>
                 <div class="control-group">
@@ -99,7 +102,6 @@
                         <label><input type="radio" name="calcTrigger" value="auto"> 自动模式</label>
                     </div>
                 </div>
-                <button class="calc-btn" id="btnCalculate">开始计算</button>
             </div>
 
             <!-- 参数设置 -->
@@ -137,11 +139,12 @@
                     <input type="number" id="num_downcomerRatio" step="0.1" value="8.8">
                 </div>
                 
-                <div id="centerDowncomerGroup" style="display: none; margin-top: 5px;">
+                <!-- 中降液管灰化显示支持 -->
+                <div id="centerDowncomerGroup" style="margin-top: 5px; opacity: 0.5; transition: opacity 0.3s;">
                     <div class="control-header"><span style="color: #d9534f; font-weight: bold;">中降液管占比 (%)</span></div>
                     <div class="control-row">
-                        <input type="range" id="centerRatio" min="1.0" max="35.0" step="0.1" value="8.8">
-                        <input type="number" id="num_centerRatio" step="0.1" value="8.8">
+                        <input type="range" id="centerRatio" min="1.0" max="35.0" step="0.1" value="8.8" disabled>
+                        <input type="number" id="num_centerRatio" step="0.1" value="8.8" disabled>
                     </div>
                 </div>
             </div>
@@ -193,19 +196,19 @@
                     <input type="number" id="num_numPanels" value="5">
                 </div>
             </div>
+            
+            <!-- 开始计算按钮移到底部 -->
+            <button class="calc-btn" id="btnCalculate">开始计算</button>
         </div>
     </div>
 </div>
 
 <script>
-    const canvas = document.getElementById('trayCanvas');
-    const ctx = canvas.getContext('2d');
-    
     let calcTriggerMode = 'manual';
     let renderTimer = null; 
-    const apiUrl = "/api/shaiban"; // 指向你的 Worker 路由[cite: 1]
+    const apiUrl = "/api/shaiban"; // 指向你的 Worker 路由
 
-    // 参数滑动条与数字框双向绑定[cite: 1, 3]
+    // 参数滑动条与数字框双向绑定
     const paramsMap = ['trayDiameter', 'downcomerRatio', 'centerRatio', 'holeDiameter', 'holePitch', 'edgeMargin', 'seamWidth', 'calmZone', 'numPanels'];
     
     paramsMap.forEach(param => {
@@ -228,7 +231,7 @@
         }
     });
 
-    // 处理中降液管联动[cite: 3]
+    // 处理中降液管联动
     function handleLinkage(param, value) {
         if (param === 'downcomerRatio') {
             document.getElementById('num_centerRatio').value = value;
@@ -236,14 +239,24 @@
         }
     }
 
-    // 处理下拉框变更
+    // 处理下拉框变更及界面灰化
     document.getElementById('trayType').addEventListener('change', (e) => {
-        document.getElementById('centerDowncomerGroup').style.display = e.target.value === 'double' ? 'block' : 'none';
+        const isDouble = e.target.value === 'double';
+        const centerGroup = document.getElementById('centerDowncomerGroup');
+        const centerSlider = document.getElementById('centerRatio');
+        const centerNum = document.getElementById('num_centerRatio');
+        
+        // 动态修改透明度与禁用状态
+        centerGroup.style.opacity = isDouble ? '1' : '0.5';
+        centerSlider.disabled = !isDouble;
+        centerNum.disabled = !isDouble;
+        
         triggerRender();
     });
+    
     document.getElementById('gridDir').addEventListener('change', triggerRender);
 
-    // 计算模式单选框切换[cite: 1]
+    // 计算模式单选框切换
     document.querySelectorAll('input[name="calcTrigger"]').forEach(radio => {
         radio.addEventListener('change', (e) => {
             calcTriggerMode = e.target.value;
@@ -291,115 +304,169 @@
 
             if(!response.ok) { alert("校验失败: " + res.error); return; }
             
-            // 更新看板数据[cite: 1, 3]
+            // 更新看板数据
             document.getElementById('resTotalArea').innerText = res.stats.totalArea;
             document.getElementById('resHoleCount').innerText = res.stats.holeCount.toLocaleString();
             document.getElementById('resOpenRatio').innerText = res.stats.openRatio + " %";
             
-            // 更新序列号状态[cite: 1]
+            // 更新序列号状态
             document.getElementById('remains').innerText = res.remainingCount;
             document.getElementById('expireDays').innerText = calculateRemainingDays(res.expire);
 
-            // 前端负责渲染画图
-            drawCanvas(v, res.drawData);
+            // 前端负责渲染 SVG 画图
+            drawSVG(v, res.drawData);
         } catch (error) {
             console.error("云端计算失败:", error);
             alert("网络错误或服务器异常，请检查网络设置。");
         }
     }
 
-    // 纯渲染函数：不再进行排版运算，只负责视觉呈现[cite: 3]
-    function drawCanvas(v, data) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // 纯渲染函数：改为生成并插入 SVG 节点
+    function drawSVG(v, data) {
+        const svg = document.getElementById('traySvg');
+        const w = 760, h = 760;
         
-        // 留白给标注
-        const scale = (canvas.width - 80) / (data.trayR * 2);
+        // 留白给标注计算缩放比例
+        const scale = (w - 80) / (data.trayR * 2);
         
-        ctx.save();
-        ctx.translate(canvas.width / 2, canvas.height / 2);
+        // 坐标系中心平移
+        const cx = w / 2;
+        const cy = h / 2 - 15; // 稍微整体上移一点，给下方的直径标注留空间
+        
+        const R = data.trayR * scale;
+        const innerR = Math.max(0, data.innerR) * scale;
+        const weirDist = data.weirDist * scale;
+        const centerW = (data.centerW || 0) * scale;
+        const calmZ = data.calmZ * scale;
+        
+        // 准备 SVG 字符串拼接，利用 DOM 特性高性能渲染
+        let content = `<defs>
+            <clipPath id="trayClip">
+                <circle cx="${cx}" cy="${cy}" r="${R}" />
+            </clipPath>
+            <clipPath id="innerClip">
+                <circle cx="${cx}" cy="${cy}" r="${innerR}" />
+            </clipPath>
+            <mask id="blindMask">
+                <rect x="0" y="0" width="${w}" height="${h}" fill="white" />
+                <circle cx="${cx}" cy="${cy}" r="${innerR}" fill="black" />
+            </mask>
+        </defs>`;
 
         // 1. 基底
-        ctx.beginPath(); ctx.arc(0, 0, data.trayR * scale, 0, Math.PI * 2);
-        ctx.fillStyle = '#ffffff'; ctx.fill();
-        ctx.strokeStyle = '#a0aec0'; ctx.stroke();
+        content += `<circle cx="${cx}" cy="${cy}" r="${R}" fill="#ffffff" stroke="#a0aec0" stroke-width="1" />`;
 
-        // 2. 盲区
-        ctx.beginPath(); ctx.arc(0, 0, data.trayR * scale, 0, Math.PI * 2);
-        ctx.arc(0, 0, Math.max(0, data.innerR) * scale, 0, Math.PI * 2, true);
-        ctx.fillStyle = '#a7f3d0'; ctx.fill();
+        // 2. 盲区 (通过 mask 实现圆环效果)
+        content += `<circle cx="${cx}" cy="${cy}" r="${R}" fill="#a7f3d0" mask="url(#blindMask)" />`;
 
-        // 3. 降液管
-        ctx.save(); ctx.beginPath(); ctx.arc(0, 0, data.trayR * scale, 0, Math.PI * 2); ctx.clip(); 
-        ctx.fillStyle = '#fed7d7';
-        ctx.fillRect(-data.trayR * scale, -data.trayR * scale, Math.max(0, data.trayR - data.weirDist) * scale, data.trayR * 2 * scale);
-        ctx.fillRect(data.weirDist * scale, -data.trayR * scale, Math.max(0, data.trayR - data.weirDist) * scale, data.trayR * 2 * scale);
-        if (v.trayType === 'double') ctx.fillRect(-data.centerW/2 * scale, -data.trayR * scale, data.centerW * scale, data.trayR * 2 * scale);
-        ctx.restore();
-
-        // 4. 安定区
-        ctx.save(); ctx.beginPath(); ctx.arc(0, 0, data.trayR * scale, 0, Math.PI * 2); ctx.clip();
-        ctx.fillStyle = '#feebc8';
-        ctx.fillRect((-data.weirDist) * scale, -data.trayR * scale, data.calmZ * scale, data.trayR * 2 * scale);
-        ctx.fillRect((data.weirDist - data.calmZ) * scale, -data.trayR * scale, data.calmZ * scale, data.trayR * 2 * scale);
+        // 3. 降液管 (#fed7d7)
+        content += `<g clip-path="url(#trayClip)">`;
+        const topY = cy - R;
+        const fullHeight = R * 2;
+        const sideW = Math.max(0, R - weirDist);
+        content += `<rect x="${cx - R}" y="${topY}" width="${sideW}" height="${fullHeight}" fill="#fed7d7" />`;
+        content += `<rect x="${cx + weirDist}" y="${topY}" width="${sideW}" height="${fullHeight}" fill="#fed7d7" />`;
         if (v.trayType === 'double') {
-            ctx.fillRect((-data.centerW/2 - data.calmZ) * scale, -data.trayR * scale, data.calmZ * scale, data.trayR * 2 * scale);
-            ctx.fillRect((data.centerW/2) * scale, -data.trayR * scale, data.calmZ * scale, data.trayR * 2 * scale);
+            content += `<rect x="${cx - centerW/2}" y="${topY}" width="${centerW}" height="${fullHeight}" fill="#fed7d7" />`;
         }
-        ctx.restore();
+        content += `</g>`;
 
-        // 5. 水平拼缝
-        ctx.save(); ctx.beginPath(); ctx.arc(0, 0, Math.max(0, data.innerR) * scale, 0, Math.PI * 2); ctx.clip();
-        ctx.fillStyle = '#cbd5e0';
+        // 4. 安定区 (#feebc8)
+        content += `<g clip-path="url(#trayClip)">`;
+        content += `<rect x="${cx - weirDist}" y="${topY}" width="${calmZ}" height="${fullHeight}" fill="#feebc8" />`;
+        content += `<rect x="${cx + weirDist - calmZ}" y="${topY}" width="${calmZ}" height="${fullHeight}" fill="#feebc8" />`;
+        if (v.trayType === 'double') {
+            content += `<rect x="${cx - centerW/2 - calmZ}" y="${topY}" width="${calmZ}" height="${fullHeight}" fill="#feebc8" />`;
+            content += `<rect x="${cx + centerW/2}" y="${topY}" width="${calmZ}" height="${fullHeight}" fill="#feebc8" />`;
+        }
+        content += `</g>`;
+
+        // 5. 水平拼缝 (#cbd5e0)
+        content += `<g clip-path="url(#innerClip)">`;
         const calmLeft = -data.weirDist + data.calmZ;
         const calmRight = data.weirDist - data.calmZ;
         for (let i = 0; i < data.panelsY.length - 1; i++) {
-            const ySeamBottom = data.panelsY[i].top;
+            const ySeamBottom = data.panelsY[i].top * scale; 
+            const seamH = v.seamWidth * scale;
             if (v.trayType === 'single') {
-                if (calmRight - calmLeft > 0) ctx.fillRect(calmLeft * scale, ySeamBottom * scale, (calmRight - calmLeft) * scale, v.seamWidth * scale);
+                if (calmRight - calmLeft > 0) {
+                    content += `<rect x="${cx + calmLeft * scale}" y="${cy + ySeamBottom}" width="${(calmRight - calmLeft) * scale}" height="${seamH}" fill="#cbd5e0" />`;
+                }
             } else {
                 const seg1Right = -data.centerW/2 - data.calmZ;
-                if (seg1Right > calmLeft) ctx.fillRect(calmLeft * scale, ySeamBottom * scale, (seg1Right - calmLeft) * scale, v.seamWidth * scale);
+                if (seg1Right > calmLeft) {
+                    content += `<rect x="${cx + calmLeft * scale}" y="${cy + ySeamBottom}" width="${(seg1Right - calmLeft) * scale}" height="${seamH}" fill="#cbd5e0" />`;
+                }
                 const seg2Left = data.centerW/2 + data.calmZ;
-                if (calmRight > seg2Left) ctx.fillRect(seg2Left * scale, ySeamBottom * scale, (calmRight - seg2Left) * scale, v.seamWidth * scale);
+                if (calmRight > seg2Left) {
+                    content += `<rect x="${cx + seg2Left * scale}" y="${cy + ySeamBottom}" width="${(calmRight - seg2Left) * scale}" height="${seamH}" fill="#cbd5e0" />`;
+                }
             }
         }
-        ctx.restore();
+        content += `</g>`;
 
-        // 6. 画孔 (直接使用后端传回的数组)
-        ctx.fillStyle = '#000000'; ctx.beginPath();
+        // 6. 画孔
         const drawSize = Math.max(0.5, v.holeDiameter * scale);
+        let holesHtml = "";
         data.holes.forEach(hole => {
-            ctx.rect((hole.x * scale) - drawSize / 2, (hole.y * scale) - drawSize / 2, drawSize, drawSize);
+            holesHtml += `<rect x="${cx + (hole.x * scale) - drawSize/2}" y="${cy + (hole.y * scale) - drawSize/2}" width="${drawSize}" height="${drawSize}" fill="#000000" />`;
         });
-        ctx.fill();
+        content += holesHtml;
 
-        // 7. 标注
-        ctx.save(); ctx.strokeStyle = '#e53e3e'; ctx.lineWidth = 1.5; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        // 7. 标注区域
+        const strokeColor = "#e53e3e";
         
-        ctx.beginPath(); ctx.moveTo(0, -data.trayR * scale); ctx.lineTo(0, data.trayR * scale); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(-6, -data.trayR * scale); ctx.lineTo(6, -data.trayR * scale); ctx.moveTo(-6, data.trayR * scale); ctx.lineTo(6, data.trayR * scale); ctx.stroke();
-        const textD = `Φ${Math.round(v.trayDiameter)}`; const metricsD = ctx.measureText(textD);
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.85)'; ctx.fillRect(-metricsD.width / 2 - 4, -25, metricsD.width + 8, 20);
-        ctx.fillStyle = '#e53e3e'; ctx.fillText(textD, 0, -15);
+        // ---- 修改1: 直径标注移到底部水平方向 ----
+        const annotY = cy + R + 25; // 置于圆圈下方 25px 处
+        content += `<g stroke="${strokeColor}" stroke-width="1.5">`;
+        // 两侧向下延长的虚线引线
+        content += `<line x1="${cx - R}" y1="${cy}" x2="${cx - R}" y2="${annotY + 10}" stroke-dasharray="4,4" opacity="0.6"/>`;
+        content += `<line x1="${cx + R}" y1="${cy}" x2="${cx + R}" y2="${annotY + 10}" stroke-dasharray="4,4" opacity="0.6"/>`;
+        // 水平主线
+        content += `<line x1="${cx - R}" y1="${annotY}" x2="${cx + R}" y2="${annotY}" />`;
+        // 两端的小竖线标志
+        content += `<line x1="${cx - R}" y1="${annotY - 6}" x2="${cx - R}" y2="${annotY + 6}" />`;
+        content += `<line x1="${cx + R}" y1="${annotY - 6}" x2="${cx + R}" y2="${annotY + 6}" />`;
+        content += `</g>`;
+        
+        const textD = `Φ${Math.round(v.trayDiameter)}`;
+        // 文字背景白底
+        content += `<rect x="${cx - 30}" y="${annotY - 10}" width="60" height="20" fill="rgba(255,255,255,0.85)" rx="3" />`;
+        content += `<text x="${cx}" y="${annotY}" fill="${strokeColor}" font-size="13" font-weight="bold" font-family="sans-serif" text-anchor="middle" dominant-baseline="central">${textD}</text>`;
 
+        // 弓形宽度标注
         const bowHeight = Math.round(data.trayR - data.weirDist);
         if (bowHeight > 0) {
-            ctx.beginPath(); ctx.moveTo(data.weirDist * scale, 0); ctx.lineTo(data.trayR * scale, 0); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(data.weirDist * scale, -6); ctx.lineTo(data.weirDist * scale, 6); ctx.moveTo(data.trayR * scale, -6); ctx.lineTo(data.trayR * scale, 6); ctx.stroke();
-            const textH = `${bowHeight}`; const midX = (data.weirDist + data.trayR) / 2 * scale; const metricsH = ctx.measureText(textH);
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.85)'; ctx.fillRect(midX - metricsH.width / 2 - 4, -22, metricsH.width + 8, 20);
-            ctx.fillStyle = '#e53e3e'; ctx.fillText(textH, midX, -12);
+            const bx1 = cx + weirDist;
+            const bx2 = cx + R;
+            content += `<g stroke="${strokeColor}" stroke-width="1.5">
+                <line x1="${bx1}" y1="${cy}" x2="${bx2}" y2="${cy}" />
+                <line x1="${bx1}" y1="${cy - 6}" x2="${bx1}" y2="${cy + 6}" />
+                <line x1="${bx2}" y1="${cy - 6}" x2="${bx2}" y2="${cy + 6}" />
+            </g>`;
+            const midX = (bx1 + bx2) / 2;
+            const textH = `${bowHeight}`;
+            content += `<rect x="${midX - 15}" y="${cy - 10}" width="30" height="20" fill="rgba(255,255,255,0.85)" rx="3" />`;
+            content += `<text x="${midX}" y="${cy}" fill="${strokeColor}" font-size="13" font-weight="bold" font-family="sans-serif" text-anchor="middle" dominant-baseline="central">${textH}</text>`;
         }
         
+        // 中心降液管标注
         if (v.trayType === 'double' && data.centerW > 0) {
-            const dimY = data.trayR * scale * 0.45;
-            ctx.beginPath(); ctx.moveTo(-data.centerW/2 * scale, dimY); ctx.lineTo(data.centerW/2 * scale, dimY); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(-data.centerW/2 * scale, dimY - 6); ctx.lineTo(-data.centerW/2 * scale, dimY + 6); ctx.moveTo(data.centerW/2 * scale, dimY - 6); ctx.lineTo(data.centerW/2 * scale, dimY + 6); ctx.stroke();
-            const textCW = `${Math.round(data.centerW)}`; const metricsCW = ctx.measureText(textCW);
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.85)'; ctx.fillRect(-metricsCW.width / 2 - 4, dimY - 22, metricsCW.width + 8, 20);
-            ctx.fillStyle = '#e53e3e'; ctx.fillText(textCW, 0, dimY - 12);
+            const dimY = cy + R * 0.45;
+            const cwLeft = cx - centerW / 2;
+            const cwRight = cx + centerW / 2;
+            content += `<g stroke="${strokeColor}" stroke-width="1.5">
+                <line x1="${cwLeft}" y1="${dimY}" x2="${cwRight}" y2="${dimY}" />
+                <line x1="${cwLeft}" y1="${dimY - 6}" x2="${cwLeft}" y2="${dimY + 6}" />
+                <line x1="${cwRight}" y1="${dimY - 6}" x2="${cwRight}" y2="${dimY + 6}" />
+            </g>`;
+            const textCW = `${Math.round(data.centerW)}`;
+            content += `<rect x="${cx - 20}" y="${dimY - 10}" width="40" height="20" fill="rgba(255,255,255,0.85)" rx="3" />`;
+            content += `<text x="${cx}" y="${dimY}" fill="${strokeColor}" font-size="13" font-weight="bold" font-family="sans-serif" text-anchor="middle" dominant-baseline="central">${textCW}</text>`;
         }
-        ctx.restore(); ctx.restore();
+
+        // 一次性渲染进 DOM 中
+        svg.innerHTML = content;
     }
 </script>
 <!-- 水印代码开始 -->
@@ -411,10 +478,9 @@
     watermark.style.left = '0';
     watermark.style.width = '100vw';
     watermark.style.height = '100vh';
-    watermark.style.pointerEvents = 'none'; // 关键：确保鼠标点击可以穿透水印层
-    watermark.style.zIndex = '9999'; // 置于最顶层
+    watermark.style.pointerEvents = 'none';
+    watermark.style.zIndex = '9999';
     
-    // SVG 水印设计：rgba(0,0,0,0.06) 实现了非常浅的灰色效果
     var svg = `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200">
         <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" 
               transform="rotate(-30 160 100)" fill="rgba(0, 0, 0, 0.04)" 
