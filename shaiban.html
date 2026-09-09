@@ -444,15 +444,13 @@
         const strokeColor = "#e53e3e";
         const annotY = cy + R + 25; 
         content += `<g stroke="${strokeColor}" stroke-width="1.5">`;
-        content += `<line x1="${cx - R}" y1="${cy}" x2="${cx - R}" y2="${annotY + 10}" stroke-dasharray="4,4" opacity="0.6"/>`;
-        content += `<line x1="${cx + R}" y1="${cy}" x2="${cx + R}" y2="${annotY + 10}" stroke-dasharray="4,4" opacity="0.6"/>`;
         content += `<line x1="${cx - R}" y1="${annotY}" x2="${cx + R}" y2="${annotY}" />`;
         content += `<line x1="${cx - R}" y1="${annotY - 6}" x2="${cx - R}" y2="${annotY + 6}" />`;
         content += `<line x1="${cx + R}" y1="${annotY - 6}" x2="${cx + R}" y2="${annotY + 6}" />`;
         content += `</g>`;
         
         const textD = `Φ${Math.round(v.trayDiameter)}`;
-        content += `<rect x="${cx - 30}" y="${annotY - 10}" width="60" height="20" fill="rgba(255,255,255,0.85)" rx="3" />`;
+        content += `<rect x="${cx - 30}" y="${annotY - 10}" width="60" height="20" fill="#ffffff" rx="3" />`;
         content += `<text x="${cx}" y="${annotY}" fill="${strokeColor}" font-size="13" font-weight="bold" font-family="sans-serif" text-anchor="middle" dominant-baseline="central">${textD}</text>`;
 
         const bowHeight = Math.round(data.trayR - data.weirDist);
@@ -466,7 +464,7 @@
             </g>`;
             const midX = (bx1 + bx2) / 2;
             const textH = `${bowHeight}`;
-            content += `<rect x="${midX - 15}" y="${cy - 10}" width="30" height="20" fill="rgba(255,255,255,0.85)" rx="3" />`;
+            content += `<rect x="${midX - 15}" y="${cy - 10}" width="30" height="20" fill="#ffffff" rx="3" />`;
             content += `<text x="${midX}" y="${cy}" fill="${strokeColor}" font-size="13" font-weight="bold" font-family="sans-serif" text-anchor="middle" dominant-baseline="central">${textH}</text>`;
         }
         
@@ -480,7 +478,7 @@
                 <line x1="${cwRight}" y1="${dimY - 6}" x2="${cwRight}" y2="${dimY + 6}" />
             </g>`;
             const textCW = `${Math.round(data.centerW)}`;
-            content += `<rect x="${cx - 20}" y="${dimY - 10}" width="40" height="20" fill="rgba(255,255,255,0.85)" rx="3" />`;
+            content += `<rect x="${cx - 20}" y="${dimY - 10}" width="40" height="20" fill="#ffffff" rx="3" />`;
             content += `<text x="${cx}" y="${dimY}" fill="${strokeColor}" font-size="13" font-weight="bold" font-family="sans-serif" text-anchor="middle" dominant-baseline="central">${textCW}</text>`;
         }
 
