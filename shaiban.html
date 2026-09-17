@@ -148,6 +148,39 @@
                 </div>
             </div>
 
+            <!-- 调整后的参数顺序开始 -->
+            <div class="control-group">
+                <div class="control-header"><span>边缘无孔区宽度 (mm)</span></div>
+                <div class="control-row">
+                    <input type="range" id="edgeMargin" min="0" max="150" value="90">
+                    <input type="number" id="num_edgeMargin" value="90">
+                </div>
+            </div>
+
+            <div class="control-group">
+                <div class="control-header"><span>堰侧安定区宽度 (mm)</span></div>
+                <div class="control-row">
+                    <input type="range" id="calmZone" min="0" max="150" value="100">
+                    <input type="number" id="num_calmZone" value="100">
+                </div>
+            </div>
+
+            <div class="control-group">
+                <div class="control-header"><span>水平拼缝带总宽 (mm)</span></div>
+                <div class="control-row">
+                    <input type="range" id="seamWidth" min="0" max="150" value="60">
+                    <input type="number" id="num_seamWidth" value="60">
+                </div>
+            </div>
+
+            <div class="control-group">
+                <div class="control-header"><span>塔板分块数</span></div>
+                <div class="control-row">
+                    <input type="range" id="numPanels" min="2" max="10" value="5">
+                    <input type="number" id="num_numPanels" value="5">
+                </div>
+            </div>
+
             <div class="control-group">
                 <div class="control-header"><span>孔径 (mm)</span></div>
                 <div class="control-row">
@@ -163,38 +196,7 @@
                     <input type="number" id="num_holePitch" step="1" value="15">
                 </div>
             </div>
-
-            <div class="control-group">
-                <div class="control-header"><span>边缘无孔区宽度 (mm)</span></div>
-                <div class="control-row">
-                    <input type="range" id="edgeMargin" min="0" max="150" value="90">
-                    <input type="number" id="num_edgeMargin" value="90">
-                </div>
-            </div>
-
-            <div class="control-group">
-                <div class="control-header"><span>水平拼缝带总宽 (mm)</span></div>
-                <div class="control-row">
-                    <input type="range" id="seamWidth" min="0" max="150" value="60">
-                    <input type="number" id="num_seamWidth" value="60">
-                </div>
-            </div>
-
-            <div class="control-group">
-                <div class="control-header"><span>堰侧安定区宽度 (mm)</span></div>
-                <div class="control-row">
-                    <input type="range" id="calmZone" min="0" max="150" value="100">
-                    <input type="number" id="num_calmZone" value="100">
-                </div>
-            </div>
-
-            <div class="control-group">
-                <div class="control-header"><span>塔板分块数</span></div>
-                <div class="control-row">
-                    <input type="range" id="numPanels" min="2" max="10" value="5">
-                    <input type="number" id="num_numPanels" value="5">
-                </div>
-            </div>
+            <!-- 调整后的参数顺序结束 -->
             
             <!-- 开始计算按钮移到底部 -->
             <button class="calc-btn" id="btnCalculate">开始计算</button>
@@ -208,7 +210,7 @@
     const apiUrl = "/api/shaiban";
 
     // 参数滑动条与数字框双向绑定
-    const paramsMap = ['trayDiameter', 'downcomerRatio', 'centerRatio', 'holeDiameter', 'holePitch', 'edgeMargin', 'seamWidth', 'calmZone', 'numPanels'];
+    const paramsMap = ['trayDiameter', 'downcomerRatio', 'centerRatio', 'edgeMargin', 'calmZone', 'seamWidth', 'numPanels', 'holeDiameter', 'holePitch'];
     
     paramsMap.forEach(param => {
         const slider = document.getElementById(param);
