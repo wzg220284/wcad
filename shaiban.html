@@ -150,7 +150,12 @@
 
             <!-- 调整后的参数顺序开始 -->
             <div class="control-group">
-                <div class="control-header"><span>边缘无孔区宽度 (mm)</span></div>
+                <div class="control-header">
+                    <span>边缘无孔区宽度 (mm)</span>
+                    <label style="font-size: 12px; font-weight: normal; cursor: pointer;">
+                        <input type="checkbox" id="chk_edgeMargin"> 自定义
+                    </label>
+                </div>
                 <div class="control-row">
                     <input type="range" id="edgeMargin" min="0" max="150" value="90">
                     <input type="number" id="num_edgeMargin" value="90">
@@ -158,7 +163,12 @@
             </div>
 
             <div class="control-group">
-                <div class="control-header"><span>堰侧安定区宽度 (mm)</span></div>
+                <div class="control-header">
+                    <span>堰侧安定区宽度 (mm)</span>
+                    <label style="font-size: 12px; font-weight: normal; cursor: pointer;">
+                        <input type="checkbox" id="chk_calmZone"> 自定义
+                    </label>
+                </div>
                 <div class="control-row">
                     <input type="range" id="calmZone" min="0" max="150" value="100">
                     <input type="number" id="num_calmZone" value="100">
@@ -166,7 +176,12 @@
             </div>
 
             <div class="control-group">
-                <div class="control-header"><span>水平拼缝区宽底 (mm)</span></div>
+                <div class="control-header">
+                    <span>水平拼缝区宽度 (mm)</span>
+                    <label style="font-size: 12px; font-weight: normal; cursor: pointer;">
+                        <input type="checkbox" id="chk_seamWidth"> 自定义
+                    </label>
+                </div>
                 <div class="control-row">
                     <input type="range" id="seamWidth" min="0" max="150" value="60">
                     <input type="number" id="num_seamWidth" value="60">
@@ -209,6 +224,11 @@
     let renderTimer = null; 
     const apiUrl = "/api/shaiban";
 
+    // 获取动态复选框元素
+    const chkEdge = document.getElementById('chk_edgeMargin');
+    const chkCalm = document.getElementById('chk_calmZone');
+    const chkSeam = document.getElementById('chk_seamWidth');
+
     // 参数滑动条与数字框双向绑定
     const paramsMap = ['trayDiameter', 'downcomerRatio', 'centerRatio', 'edgeMargin', 'calmZone', 'seamWidth', 'numPanels', 'holeDiameter', 'holePitch'];
     
@@ -216,19 +236,85 @@
         const slider = document.getElementById(param);
         const numInput = document.getElementById('num_' + param);
         
+        const syncValues = (val) => {
+            if (slider) slider.value = val;
+            if (numInput) numInput.value = val;
+            handleLinkage(param, val);
+            // 如果改变的是塔径，则根据需要触发动态默认值计算
+            if (param === 'trayDiameter') applyDefaults();
+            triggerRender();
+        };
+
         if (slider) { 
-            slider.addEventListener('input', (e) => { 
-                if(numInput) numInput.value = e.target.value; 
-                handleLinkage(param, e.target.value);
-                triggerRender(); 
-            }); 
+            slider.addEventListener('input', (e) => { syncValues(e.target.value); }); 
         }
         if (numInput) { 
-            numInput.addEventListener('input', (e) => { 
-                if(slider) slider.value = e.target.value; 
-                handleLinkage(param, e.target.value);
-                triggerRender(); 
-            }); 
+            numInput.addEventListener('input', (e) => { syncValues(e.target.value); }); 
+        }
+    });
+
+    // 动态默认值计算逻辑
+    function applyDefaults() {
+        const D = parseFloat(document.getElementById('num_trayDiameter').value) || 1800;
+        
+        // 1. 边缘无孔区规则
+        let edge = 80;
+        if (D <= 1200) edge = 80;
+        else if (D <= 2000) edge = 90;
+        else if (D <= 3100) edge = 100;
+        else if (D <= 4400) edge = 110;
+        else if (D <= 6200) edge = 120;
+        else edge = 130;
+
+        // 2. 堰侧安定区规则
+        let calm = 90;
+        if (D <= 1200) calm = 90;
+        else if (D <= 2000) calm = 100;
+        else calm = 110;
+
+        // 3. 水平拼缝规则
+        let seam = 60;
+
+        // 刷新状态和值
+        updateParamStatus('edgeMargin', edge, chkEdge.checked);
+        updateParamStatus('calmZone', calm, chkCalm.checked);
+        updateParamStatus('seamWidth', seam, chkSeam.checked);
+    }
+
+    // 更新参数输入框的样式和值
+    function updateParamStatus(id, defaultVal, isCustom) {
+        const slider = document.getElementById(id);
+        const numInput = document.getElementById('num_' + id);
+        
+        slider.disabled = !isCustom;
+        numInput.disabled = !isCustom;
+        
+        if (!isCustom) {
+            slider.value = defaultVal;
+            numInput.value = defaultVal;
+            // 未勾选自定义：应用灰化样式
+            numInput.style.backgroundColor = '#e9ecef';
+            numInput.style.color = '#a0a0a0';
+            numInput.style.cursor = 'not-allowed';
+            slider.style.opacity = '0.4';
+            slider.style.cursor = 'not-allowed';
+        } else {
+            // 勾选自定义：恢复正常样式
+            numInput.style.backgroundColor = '';
+            numInput.style.color = '';
+            numInput.style.cursor = 'text';
+            slider.style.opacity = '1';
+            slider.style.cursor = 'pointer';
+        }
+    }
+
+    // 绑定 Checkbox 的变更事件
+    [chkEdge, chkCalm, chkSeam].forEach(chk => {
+        if(chk) {
+            chk.addEventListener('change', () => {
+                applyDefaults();
+                triggerRender();
+            });
         }
     });
 
@@ -273,8 +359,9 @@
         }
     }
 
-    // 初始化运行一次灰化检测
+    // 页面初始化：运行一次灰化检测和默认值计算
     toggleCenterRatioInput();
+    applyDefaults();
 
     // 塔板选型切换事件
     document.getElementById('trayType').addEventListener('change', (e) => {
@@ -356,7 +443,7 @@
             document.getElementById('remains').innerText = res.remainingCount;
             document.getElementById('expireDays').innerText = calculateRemainingDays(res.expire);
 
-            drawSVG(v, res.drawData);
+            drawSVG(v, res.drawData || res.data); // 做了防御兼容，如果原代码是 res.data 请保留
         } catch (error) {
             console.error("云端计算失败:", error);
             alert("网络错误或服务器异常，请检查网络设置。");
@@ -364,6 +451,8 @@
     }
 
     function drawSVG(v, data) {
+        if (!data) return; // 避免未返回数据时崩溃
+
         const svg = document.getElementById('traySvg');
         const w = 760, h = 760;
         
@@ -372,10 +461,10 @@
         const cy = h / 2 - 15;
         
         const R = data.trayR * scale;
-        const innerR = Math.max(0, data.innerR) * scale;
-        const weirDist = data.weirDist * scale;
+        const innerR = Math.max(0, data.innerR || 0) * scale;
+        const weirDist = (data.weirDist || 0) * scale;
         const centerW = (data.centerW || 0) * scale;
-        const calmZ = data.calmZ * scale;
+        const calmZ = (data.calmZ || 0) * scale;
         
         let content = `<defs>
             <clipPath id="trayClip">
@@ -414,21 +503,23 @@
         content += `</g>`;
 
         content += `<g clip-path="url(#innerClip)">`;
-        const calmLeft = -data.weirDist + data.calmZ;
-        const calmRight = data.weirDist - data.calmZ;
-        for (let i = 0; i < data.panelsY.length - 1; i++) {
-            const ySeamBottom = data.panelsY[i].top * scale; 
-            const seamH = v.seamWidth * scale;
+        const calmLeft = - (data.weirDist || 0) + (data.calmZ || 0);
+        const calmRight = (data.weirDist || 0) - (data.calmZ || 0);
+        
+        const panelsY = data.panelsY || []; 
+        for (let i = 0; i < panelsY.length - 1; i++) {
+            const ySeamBottom = panelsY[i].top * scale; 
+            const seamH = (v.seamWidth || 0) * scale;
             if (v.trayType === 'single') {
                 if (calmRight - calmLeft > 0) {
                     content += `<rect x="${cx + calmLeft * scale}" y="${cy + ySeamBottom}" width="${(calmRight - calmLeft) * scale}" height="${seamH}" fill="#cbd5e0" />`;
                 }
             } else {
-                const seg1Right = -data.centerW/2 - data.calmZ;
+                const seg1Right = -(data.centerW || 0)/2 - (data.calmZ || 0);
                 if (seg1Right > calmLeft) {
                     content += `<rect x="${cx + calmLeft * scale}" y="${cy + ySeamBottom}" width="${(seg1Right - calmLeft) * scale}" height="${seamH}" fill="#cbd5e0" />`;
                 }
-                const seg2Left = data.centerW/2 + data.calmZ;
+                const seg2Left = (data.centerW || 0)/2 + (data.calmZ || 0);
                 if (calmRight > seg2Left) {
                     content += `<rect x="${cx + seg2Left * scale}" y="${cy + ySeamBottom}" width="${(calmRight - seg2Left) * scale}" height="${seamH}" fill="#cbd5e0" />`;
                 }
@@ -436,10 +527,11 @@
         }
         content += `</g>`;
 
-        const radius = Math.max(0.25, (v.holeDiameter * scale) / 2);
+        const radius = Math.max(0.25, ((v.holeDiameter || 0) * scale) / 2);
         let holesHtml = "";
-        data.holes.forEach(hole => {
-        holesHtml += `<circle cx="${cx + (hole.x * scale)}" cy="${cy + (hole.y * scale)}" r="${radius}" fill="rgba(0, 0, 0, 0.3)" />`;
+        const holes = data.holes || [];
+        holes.forEach(hole => {
+            holesHtml += `<circle cx="${cx + (hole.x * scale)}" cy="${cy + (hole.y * scale)}" r="${radius}" fill="rgba(0, 0, 0, 0.3)" />`;
         });
         content += holesHtml;
 
@@ -455,7 +547,7 @@
         content += `<rect x="${cx - 30}" y="${annotY - 10}" width="60" height="20" fill="#ffffff" rx="3" />`;
         content += `<text x="${cx}" y="${annotY}" fill="${strokeColor}" font-size="13" font-weight="bold" font-family="sans-serif" text-anchor="middle" dominant-baseline="central">${textD}</text>`;
 
-        const bowHeight = Math.round(data.trayR - data.weirDist);
+        const bowHeight = Math.round((data.trayR || 0) - (data.weirDist || 0));
         if (bowHeight > 0) {
             const bx1 = cx + weirDist;
             const bx2 = cx + R;
@@ -470,7 +562,7 @@
             content += `<text x="${midX}" y="${cy}" fill="${strokeColor}" font-size="13" font-weight="bold" font-family="sans-serif" text-anchor="middle" dominant-baseline="central">${textH}</text>`;
         }
         
-        if (v.trayType === 'double' && data.centerW > 0) {
+        if (v.trayType === 'double' && (data.centerW || 0) > 0) {
             const dimY = cy + R * 0.45;
             const cwLeft = cx - centerW / 2;
             const cwRight = cx + centerW / 2;
