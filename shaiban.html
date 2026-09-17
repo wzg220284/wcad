@@ -166,7 +166,7 @@
             </div>
 
             <div class="control-group">
-                <div class="control-header"><span>水平拼缝区宽度 (mm)</span></div>
+                <div class="control-header"><span>水平拼缝区宽底 (mm)</span></div>
                 <div class="control-row">
                     <input type="range" id="seamWidth" min="0" max="150" value="60">
                     <input type="number" id="num_seamWidth" value="60">
@@ -232,7 +232,7 @@
         }
     });
 
-    // 处理联动逻辑：塔径决定默认的边缘宽度和安定区宽度；侧降液管联动中降液管
+    // 处理侧降液管与中降液管初始联动
     function handleLinkage(param, value) {
         if (param === 'downcomerRatio') {
             const centerSlider = document.getElementById('centerRatio');
@@ -241,41 +241,6 @@
                 centerSlider.value = value;
                 centerNum.value = value;
             }
-        } 
-        else if (param === 'trayDiameter') {
-            const d = parseFloat(value);
-            let edge = 90;
-            let calm = 100;
-
-            // 边缘无孔区宽度规则
-            if (d <= 1200) {
-                edge = 80;
-            } else if (d <= 2000) {
-                edge = 90;
-            } else if (d <= 3100) {
-                edge = 100;
-            } else if (d <= 4400) {
-                edge = 110;
-            } else if (d <= 6200) {
-                edge = 120;
-            } else {
-                edge = 130;
-            }
-
-            // 堰侧安定区宽度规则
-            if (d <= 1200) {
-                calm = 90;
-            } else if (d <= 2000) {
-                calm = 100;
-            } else {
-                calm = 110;
-            }
-
-            // 更新DOM元素
-            document.getElementById('edgeMargin').value = edge;
-            document.getElementById('num_edgeMargin').value = edge;
-            document.getElementById('calmZone').value = calm;
-            document.getElementById('num_calmZone').value = calm;
         }
     }
 
@@ -451,60 +416,102 @@
         content += `<g clip-path="url(#innerClip)">`;
         const calmLeft = -data.weirDist + data.calmZ;
         const calmRight = data.weirDist - data.calmZ;
-        for (let i = 0; i < data.seams.length; i++) {
-            const seamY = cy - data.seams[i] * scale;
-            const seamHeight = data.seamW * scale;
+        for (let i = 0; i < data.panelsY.length - 1; i++) {
+            const ySeamBottom = data.panelsY[i].top * scale; 
+            const seamH = v.seamWidth * scale;
             if (v.trayType === 'single') {
-                const wx = cx + calmLeft * scale;
-                const ww = (calmRight - calmLeft) * scale;
-                content += `<rect x="${wx}" y="${seamY - seamHeight/2}" width="${ww}" height="${seamHeight}" fill="#cbd5e0" />`;
+                if (calmRight - calmLeft > 0) {
+                    content += `<rect x="${cx + calmLeft * scale}" y="${cy + ySeamBottom}" width="${(calmRight - calmLeft) * scale}" height="${seamH}" fill="#cbd5e0" />`;
+                }
             } else {
-                const calmRight1 = -data.centerW/2 - data.calmZ;
-                const calmLeft2 = data.centerW/2 + data.calmZ;
-                const wx1 = cx + calmLeft * scale;
-                const ww1 = (calmRight1 - calmLeft) * scale;
-                if(ww1 > 0) content += `<rect x="${wx1}" y="${seamY - seamHeight/2}" width="${ww1}" height="${seamHeight}" fill="#cbd5e0" />`;
-                
-                const wx2 = cx + calmLeft2 * scale;
-                const ww2 = (calmRight - calmLeft2) * scale;
-                if(ww2 > 0) content += `<rect x="${wx2}" y="${seamY - seamHeight/2}" width="${ww2}" height="${seamHeight}" fill="#cbd5e0" />`;
+                const seg1Right = -data.centerW/2 - data.calmZ;
+                if (seg1Right > calmLeft) {
+                    content += `<rect x="${cx + calmLeft * scale}" y="${cy + ySeamBottom}" width="${(seg1Right - calmLeft) * scale}" height="${seamH}" fill="#cbd5e0" />`;
+                }
+                const seg2Left = data.centerW/2 + data.calmZ;
+                if (calmRight > seg2Left) {
+                    content += `<rect x="${cx + seg2Left * scale}" y="${cy + ySeamBottom}" width="${(calmRight - seg2Left) * scale}" height="${seamH}" fill="#cbd5e0" />`;
+                }
             }
         }
         content += `</g>`;
 
-        let pathD = '';
-        const holeR = (data.holeD / 2) * scale;
-        const pts = data.holes;
-        for (let i = 0; i < pts.length; i += 2) {
-            const hx = cx + pts[i] * scale;
-            const hy = cy - pts[i+1] * scale; 
-            pathD += `M ${hx + holeR} ${hy} A ${holeR} ${holeR} 0 1 0 ${hx - holeR} ${hy} A ${holeR} ${holeR} 0 1 0 ${hx + holeR} ${hy} `;
-        }
-        if (pathD) {
-            content += `<path d="${pathD}" fill="rgba(0, 0, 0, 0.4)" />`;
-        }
-
-        const markDist = R + 25;
-        const endPts = [
-            { x: cx, y: cy - markDist, len: 10 },
-            { x: cx, y: cy + markDist, len: 10 },
-            { x: cx - markDist, y: cy, len: 10 },
-            { x: cx + markDist, y: cy, len: 10 }
-        ];
-        
-        endPts.forEach(pt => {
-            if (pt.x === cx) {
-                content += `<line x1="${pt.x}" y1="${pt.y - pt.len}" x2="${pt.x}" y2="${pt.y + pt.len}" stroke="#718096" stroke-width="1.5" />`;
-            } else {
-                content += `<line x1="${pt.x - pt.len}" y1="${pt.y}" x2="${pt.x + pt.len}" y2="${pt.y}" stroke="#718096" stroke-width="1.5" />`;
-            }
+        const radius = Math.max(0.25, (v.holeDiameter * scale) / 2);
+        let holesHtml = "";
+        data.holes.forEach(hole => {
+        holesHtml += `<circle cx="${cx + (hole.x * scale)}" cy="${cy + (hole.y * scale)}" r="${radius}" fill="rgba(0, 0, 0, 0.3)" />`;
         });
+        content += holesHtml;
 
-        content += `<line x1="${cx}" y1="${cy - markDist - 5}" x2="${cx}" y2="${cy + markDist + 5}" stroke="#718096" stroke-width="1" stroke-dasharray="8,8" />`;
-        content += `<line x1="${cx - markDist - 5}" y1="${cy}" x2="${cx + markDist + 5}" y2="${cy}" stroke="#718096" stroke-width="1" stroke-dasharray="8,8" />`;
+        const strokeColor = "#e53e3e";
+        const annotY = cy + R + 25; 
+        content += `<g stroke="${strokeColor}" stroke-width="1.5">`;
+        content += `<line x1="${cx - R}" y1="${annotY}" x2="${cx + R}" y2="${annotY}" />`;
+        content += `<line x1="${cx - R}" y1="${annotY - 6}" x2="${cx - R}" y2="${annotY + 6}" />`;
+        content += `<line x1="${cx + R}" y1="${annotY - 6}" x2="${cx + R}" y2="${annotY + 6}" />`;
+        content += `</g>`;
+        
+        const textD = `Φ${Math.round(v.trayDiameter)}`;
+        content += `<rect x="${cx - 30}" y="${annotY - 10}" width="60" height="20" fill="#ffffff" rx="3" />`;
+        content += `<text x="${cx}" y="${annotY}" fill="${strokeColor}" font-size="13" font-weight="bold" font-family="sans-serif" text-anchor="middle" dominant-baseline="central">${textD}</text>`;
+
+        const bowHeight = Math.round(data.trayR - data.weirDist);
+        if (bowHeight > 0) {
+            const bx1 = cx + weirDist;
+            const bx2 = cx + R;
+            content += `<g stroke="${strokeColor}" stroke-width="1.5">
+                <line x1="${bx1}" y1="${cy}" x2="${bx2}" y2="${cy}" />
+                <line x1="${bx1}" y1="${cy - 6}" x2="${bx1}" y2="${cy + 6}" />
+                <line x1="${bx2}" y1="${cy - 6}" x2="${bx2}" y2="${cy + 6}" />
+            </g>`;
+            const midX = (bx1 + bx2) / 2;
+            const textH = `${bowHeight}`;
+            content += `<rect x="${midX - 15}" y="${cy - 10}" width="30" height="20" fill="#ffffff" rx="3" />`;
+            content += `<text x="${midX}" y="${cy}" fill="${strokeColor}" font-size="13" font-weight="bold" font-family="sans-serif" text-anchor="middle" dominant-baseline="central">${textH}</text>`;
+        }
+        
+        if (v.trayType === 'double' && data.centerW > 0) {
+            const dimY = cy + R * 0.45;
+            const cwLeft = cx - centerW / 2;
+            const cwRight = cx + centerW / 2;
+            content += `<g stroke="${strokeColor}" stroke-width="1.5">
+                <line x1="${cwLeft}" y1="${dimY}" x2="${cwRight}" y2="${dimY}" />
+                <line x1="${cwLeft}" y1="${dimY - 6}" x2="${cwLeft}" y2="${dimY + 6}" />
+                <line x1="${cwRight}" y1="${dimY - 6}" x2="${cwRight}" y2="${dimY + 6}" />
+            </g>`;
+            const textCW = `${Math.round(data.centerW)}`;
+            content += `<rect x="${cx - 20}" y="${dimY - 10}" width="40" height="20" fill="#ffffff" rx="3" />`;
+            content += `<text x="${cx}" y="${dimY}" fill="${strokeColor}" font-size="13" font-weight="bold" font-family="sans-serif" text-anchor="middle" dominant-baseline="central">${textCW}</text>`;
+        }
 
         svg.innerHTML = content;
     }
 </script>
+
+<!-- 水印代码开始 -->
+<script>
+(function() {
+    var watermark = document.createElement('div');
+    watermark.style.position = 'fixed';
+    watermark.style.top = '0';
+    watermark.style.left = '0';
+    watermark.style.width = '100vw';
+    watermark.style.height = '100vh';
+    watermark.style.pointerEvents = 'none';
+    watermark.style.zIndex = '9999';
+    
+    var svg = `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200">
+        <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" 
+              transform="rotate(-30 160 100)" fill="rgba(0, 0, 0, 0.04)" 
+              font-size="22" font-family="Arial, sans-serif, 'Microsoft YaHei'">www.wcad.wang</text>
+    </svg>`;
+    
+    watermark.style.backgroundImage = 'url("data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg) + '")';
+    watermark.style.backgroundRepeat = 'repeat';
+    
+    document.body.appendChild(watermark);
+})();
+</script>
+<!-- 水印代码结束 -->
 </body>
 </html>
