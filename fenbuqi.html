@@ -453,7 +453,7 @@
         // 8. 绘制布孔点
         let holesHtml = '';
         drawData.holes.forEach(hole => {
-            holesHtml += `<circle cx="${cx + hole.x * scale}" cy="${cy + hole.y * scale}" r="2" fill="#000000"/>`;
+            holesHtml += `<circle cx="${cx + hole.x * scale}" cy="${cy + hole.y * scale}" r="2" fill="rgba(0, 0, 0, 0.3)"/>`;
         });
         svgContent += holesHtml;
 
