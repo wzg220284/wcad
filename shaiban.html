@@ -134,18 +134,15 @@
                 </div>
             </div>
             
+            <!-- 【修改】降液管几何：由占比(%) 改为绝对尺寸(mm)，上下限随塔径变化，仅保留数字输入框，标签与输入框同行 -->
             <div class="control-group" style="background: #fff8f8; padding: 6px 8px; border-radius: 6px; border: 1px solid #ffdfdf;">
-                <div class="control-header"><span style="color: #d9534f; font-weight: bold;">侧降液管占比 (%)</span></div>
-                <div class="control-row">
-                    <input type="range" id="downcomerRatio" min="1.0" max="35.0" step="0.1" value="10">
-                    <input type="number" id="num_downcomerRatio" step="0.1" value="10">
+                <div class="control-row" style="justify-content: space-between;">
+                    <span style="color: #d9534f; font-weight: bold; font-size: 13px;">弓高 (mm)</span>
+                    <input type="number" id="num_bowHeight" step="5" min="0" max="900" value="200">
                 </div>
-                
-                <!-- 中降液管占比设置（支持统一灰化逻辑） -->
-                <div class="control-header" style="margin-top: 4px;"><span id="centerRatioLabel" style="color: #d9534f; font-weight: bold;">中降液管占比 (%)</span></div>
-                <div class="control-row">
-                    <input type="range" id="centerRatio" min="1.0" max="35.0" step="0.1" value="10" disabled>
-                    <input type="number" id="num_centerRatio" step="0.1" value="10" disabled>
+                <div class="control-row" style="justify-content: space-between; margin-top: 6px;">
+                    <span id="centerWidthLabel" style="color: #d9534f; font-weight: bold; font-size: 13px;">中降宽 (mm)</span>
+                    <input type="number" id="num_centerWidth" step="5" min="0" max="1400" value="200" disabled>
                 </div>
             </div>
 
@@ -230,8 +227,9 @@
     const chkCalm = document.getElementById('chk_calmZone');
     const chkSeam = document.getElementById('chk_seamWidth');
 
-    // 参数滑动条与数字框双向绑定
-    const paramsMap = ['trayDiameter', 'downcomerRatio', 'centerRatio', 'edgeMargin', 'calmZone', 'seamWidth', 'numPanels', 'holeDiameter', 'holePitch'];
+    // 【修改】downcomerRatio / centerRatio 改为绝对尺寸参数 bowHeight(弓高mm) / centerWidth(中降宽mm)
+    //        这两个参数不再配滑动条，仅有数字输入框；其余参数保持滑动条+数字框双向绑定
+    const paramsMap = ['trayDiameter', 'bowHeight', 'centerWidth', 'edgeMargin', 'calmZone', 'seamWidth', 'numPanels', 'holeDiameter', 'holePitch'];
     
     paramsMap.forEach(param => {
         const slider = document.getElementById(param);
@@ -240,9 +238,10 @@
         const syncValues = (val) => {
             if (slider) slider.value = val;
             if (numInput) numInput.value = val;
-            handleLinkage(param, val);
-            // 如果改变的是塔径，则根据需要触发动态默认值计算
+            // 如果改变的是塔径，则触发动态默认值与上下限重算
             if (param === 'trayDiameter') applyDefaults();
+            // 弓高决定两侧弦间距，变化时同步刷新中降宽上限
+            if (param === 'bowHeight') updateSizeConstraints();
             triggerRender();
         };
 
@@ -280,6 +279,31 @@
         updateParamStatus('edgeMargin', edge, chkEdge.checked);
         updateParamStatus('calmZone', calm, chkCalm.checked);
         updateParamStatus('seamWidth', seam, chkSeam.checked);
+
+        // 【新增】弓高 / 中降宽的上下限随塔径变化
+        updateSizeConstraints();
+    }
+
+    // 【新增】根据塔径(及当前弓高)动态刷新弓高/中降宽输入框的上下限（界面不显示提示文字）
+    //   与后台裁剪规则完全一致：弓高 0~R，中降宽 0~2*(R - 弓高)
+    function updateSizeConstraints() {
+        const D = parseFloat(document.getElementById('num_trayDiameter').value) || 1800;
+        const trayR = D / 2;
+        const bow = document.getElementById('num_bowHeight');
+        const cw  = document.getElementById('num_centerWidth');
+
+        const bv = parseFloat(bow.value);
+        const bowH = Number.isFinite(bv) ? Math.max(0, Math.min(bv, trayR)) : 0;
+        const weirDist = trayR - bowH;
+        const centerMax = Math.max(0, 2 * weirDist);
+
+        bow.min = 0; bow.max = trayR;
+        cw.min  = 0; cw.max  = centerMax;
+
+        // 塔径/弓高变小时，将超上限的取值自动收敛到上限，保证前后台一致
+        if (Number.isFinite(bv) && bv > trayR) bow.value = Math.round(trayR);
+        const cv = parseFloat(cw.value);
+        if (Number.isFinite(cv) && cv > centerMax) cw.value = Math.round(centerMax);
     }
 
     // 更新参数输入框的样式和值
@@ -319,54 +343,39 @@
         }
     });
 
-    // 处理侧降液管与中降液管初始联动
-    function handleLinkage(param, value) {
-        if (param === 'downcomerRatio') {
-            const centerSlider = document.getElementById('centerRatio');
-            const centerNum = document.getElementById('num_centerRatio');
-            if(centerSlider && !centerSlider.disabled) {
-                centerSlider.value = value;
-                centerNum.value = value;
-            }
-        }
-    }
+    // 【删除】原 handleLinkage（占比时代「侧占比改动联动中占比」）
+    //   改为「弓高 / 中降宽」后两者物理含义不同、无相等关系，故移除该联动，由用户分别输入。
 
-    // 中降液管灰化样式控制函数（参照分布器样式）
-    function toggleCenterRatioInput() {
+    // 中降宽输入框灰化样式控制（单溢流时不生效）
+    function toggleCenterWidthInput() {
         const trayTypeVal = document.getElementById('trayType').value;
         const isDouble = (trayTypeVal === 'double');
         
-        const centerSlider = document.getElementById('centerRatio');
-        const centerNum = document.getElementById('num_centerRatio');
-        const centerLabel = document.getElementById('centerRatioLabel');
+        const centerNum = document.getElementById('num_centerWidth');
+        const centerLabel = document.getElementById('centerWidthLabel');
         
-        centerSlider.disabled = !isDouble;
         centerNum.disabled = !isDouble;
         
         if (!isDouble) {
             centerLabel.style.color = '#a0a0a0';
-            centerSlider.style.opacity = '0.4';
-            centerSlider.style.cursor = 'not-allowed';
             centerNum.style.backgroundColor = '#e9ecef';
             centerNum.style.color = '#a0a0a0';
             centerNum.style.cursor = 'not-allowed';
         } else {
             centerLabel.style.color = '#d9534f';
-            centerSlider.style.opacity = '1';
-            centerSlider.style.cursor = 'pointer';
             centerNum.style.backgroundColor = '';
             centerNum.style.color = '';
             centerNum.style.cursor = 'text';
         }
     }
 
-    // 页面初始化：运行一次灰化检测和默认值计算
-    toggleCenterRatioInput();
+    // 页面初始化：运行一次灰化检测、默认值计算与上下限计算
+    toggleCenterWidthInput();
     applyDefaults();
 
     // 塔板选型切换事件
     document.getElementById('trayType').addEventListener('change', (e) => {
-        toggleCenterRatioInput();
+        toggleCenterWidthInput();
         triggerRender();
     });
     
