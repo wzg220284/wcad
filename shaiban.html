@@ -231,6 +231,8 @@
 
 <script>
     let calcTriggerMode = 'manual';
+    // 上一次「实际提交给后台计算」的参数快照：用于判断当前数据是否真的变了
+    let lastCalcSnapshot = null;
     let renderTimer = null; 
     const apiUrl = "/api/shaiban";
 
@@ -257,7 +259,9 @@
             if (param === 'bowHeight') updateSizeConstraints();
             // 注释为纯前端几何计算，任何参数变化都实时刷新（不受手动/自动模式限制）
             updateAreaRatioNotes();
-            triggerRender();
+            // 仅当当前数据与「上次实际提交计算」的数据不同才触发计算
+            //   注意：input 事件派发时 DOM 值已是新值，不能在回调里取「旧快照」比较
+            if (JSON.stringify(getVals()) !== lastCalcSnapshot) triggerRender();
         };
 
         if (slider) { 
@@ -398,11 +402,14 @@
     }
 
     // 绑定 Checkbox 的变更事件
+    // 【修改】只在提交数据实际变化时才触发后台计算：
+    //   勾选自定义（false→true）仅解除灰化、数值不变 → 不重算、不消耗次数；
+    //   取消勾选（true→false）会把值恢复为默认值，数值变了才重算。
     [chkEdge, chkCalm, chkSeam, chkPitch].forEach(chk => {
         if(chk) {
             chk.addEventListener('change', () => {
                 applyDefaults();
-                triggerRender();
+                if (JSON.stringify(getVals()) !== lastCalcSnapshot) triggerRender();
             });
         }
     });
@@ -437,6 +444,8 @@
     toggleCenterWidthInput();
     applyDefaults();
     updateAreaRatioNotes();
+    // 记录初始数据快照：此后只有与它不同的数据才需要触发计算
+    lastCalcSnapshot = JSON.stringify(getVals());
 
     // 塔板选型切换事件
     document.getElementById('trayType').addEventListener('change', (e) => {
@@ -501,6 +510,8 @@
     async function render() {
         const v = getVals();
         if (!v.licenseKey) { alert("请先填写序列号！"); return; }
+        // 本批数据已提交计算，记录快照（自动模式下的去重基准）
+        lastCalcSnapshot = JSON.stringify(v);
 
         try {
             const response = await fetch(apiUrl, {
