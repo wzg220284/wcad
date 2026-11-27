@@ -211,16 +211,20 @@
                 </div>
             </div>
 
+            <!-- 中心距/孔径 (t/d)：与孔中心距双向联动，改其一另一个自动跟随；孔中心距 = ⌈t/d × 孔径⌉ -->
             <div class="control-group">
-                <div class="control-header">
-                    <span>孔中心距 (mm) 默认3d向上取整</span>
-                    <label style="font-size: 12px; font-weight: normal; cursor: pointer;">
-                        <input type="checkbox" id="chk_holePitch"> 自定义
-                    </label>
-                </div>
+                <div class="control-header"><span title="取值范围 2.5~5、步长 0.1；与「孔中心距」双向联动，改其一另一个自动跟随">中心距/孔径</span></div>
                 <div class="control-row">
-                    <input type="range" id="holePitch" min="3" max="60" step="1" value="24">
-                    <input type="number" id="num_holePitch" step="1" value="24">
+                    <input type="range" id="pitchRatio" min="2.5" max="5" step="0.1" value="3">
+                    <input type="number" id="num_pitchRatio" min="2.5" max="5" step="0.1" value="3">
+                </div>
+            </div>
+
+            <div class="control-group">
+                <div class="control-header"><span title="= ⌈(中心距/孔径) × 孔径⌉，向上取整；也可直接修改，比值自动反算。滑块固定 3~100，数字框允许手输界外值">孔中心距 (mm)</span></div>
+                <div class="control-row">
+                    <input type="range" id="holePitch" min="3" max="100" step="1" value="24">
+                    <input type="number" id="num_holePitch" min="3" max="100" step="1" value="24">
                 </div>
             </div>
             <!-- 调整后的参数顺序结束 -->
@@ -242,21 +246,26 @@
     const chkEdge = document.getElementById('chk_edgeMargin');
     const chkCalm = document.getElementById('chk_calmZone');
     const chkSeam = document.getElementById('chk_seamWidth');
-    const chkPitch = document.getElementById('chk_holePitch');
 
     // 【修改】downcomerRatio / centerRatio 改为绝对尺寸参数 bowHeight(弓高mm) / centerWidth(中降宽mm)
     //        这两个参数不再配滑动条，仅有数字输入框；其余参数保持滑动条+数字框双向绑定
+    // paramsMap = 提交给后台的参数；pitchRatio 仅用于前端联动，不提交后台
     const paramsMap = ['trayDiameter', 'bowHeight', 'centerWidth', 'edgeMargin', 'calmZone', 'seamWidth', 'numPanels', 'holeDiameter', 'holePitch'];
+    const uiParams = [...paramsMap, 'pitchRatio'];
     
-    paramsMap.forEach(param => {
+    uiParams.forEach(param => {
         const slider = document.getElementById(param);
         const numInput = document.getElementById('num_' + param);
         
         const syncValues = (val) => {
             if (slider) slider.value = val;
             if (numInput) numInput.value = val;
-            // 塔径变化重算动态默认值与上下限；孔径变化需重算「孔中心距 = ⌈3 倍孔径⌉」默认值
+            // 塔径变化重算动态默认值与上下限
             if (param === 'trayDiameter' || param === 'holeDiameter') applyDefaults();
+            // 「中心距/孔径 ↔ 孔中心距」双向联动：改其一另一个自动跟随，孔中心距恒向上取整
+            if (param === 'pitchRatio') syncPitchLinkage('ratio');
+            else if (param === 'holePitch') syncPitchLinkage('pitch');
+            else if (param === 'holeDiameter') syncPitchLinkage('diameter');
             // 弓高决定两侧弦间距，变化时同步刷新中降宽上限
             if (param === 'bowHeight') updateSizeConstraints();
             // 注释为纯前端几何计算，任何参数变化都实时刷新（不受手动/自动模式限制）
@@ -296,18 +305,50 @@
         // 3. 水平拼缝规则
         let seam = 65;
 
-        // 4. 孔中心距规则：默认取 3 倍孔径并「往上圆整至整数」（如 8mm→24，8.5mm→26）
-        const holeD = parseFloat(document.getElementById('num_holeDiameter').value) || 8;
-        const pitchDefault = Math.ceil(3 * holeD);
-
         // 刷新状态和值
         updateParamStatus('edgeMargin', edge, chkEdge.checked);
         updateParamStatus('calmZone', calm, chkCalm.checked);
         updateParamStatus('seamWidth', seam, chkSeam.checked);
-        updateParamStatus('holePitch', pitchDefault, chkPitch.checked);
+        // 孔中心距不再有「默认 3d / 自定义」之分，改由「中心距/孔径」联动计算（见 syncPitchLinkage）
 
         // 【新增】弓高 / 中降宽的上下限随塔径变化
         updateSizeConstraints();
+    }
+
+    // 【新增】「中心距/孔径 (t/d)」与「孔中心距」双向联动
+    //   规则：孔中心距 = ⌈(中心距/孔径) × 孔径⌉，恒为整数。
+    //   - 改比值 / 改孔径 → 按当前比值重算孔中心距；手动输入比值时限定 2.5~5、步长 0.1。
+    //   - 直接改孔中心距 → 反算比值并如实显示，即使超出 2.5~5 也不夹取、不收敛中心距。
+    //   - 滑块范围固定（比值 2.5~5、中心距 3~100）；数字框允许手输界外值，
+    //     提交后台的是数字框实际值，滑块只显示被范围夹住后的位置。
+    //   注意：因向上取整且比值按 0.1 圆整，反算值是近似值，两者不严格互逆（属正常）。
+    function syncPitchLinkage(source) {
+        const d = parseFloat(document.getElementById('num_holeDiameter').value) || 8;
+        const rSlider = document.getElementById('pitchRatio');
+        const rNum    = document.getElementById('num_pitchRatio');
+        const pSlider = document.getElementById('holePitch');
+        const pNum    = document.getElementById('num_holePitch');
+        const clamp  = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+        const round1 = (v) => Math.round(v * 10) / 10;
+
+        let ratio, pitch;
+        if (source === 'pitch') {
+            const raw = parseFloat(pNum.value);
+            if (!Number.isFinite(raw)) return;   // 用户正在清空输入框，暂不联动
+            pitch = Math.ceil(raw);              // 中心距恒向上取整；界外值原样保留，不收敛
+            ratio = round1(pitch / d);           // 反算比值：即使超界也如实显示
+        } else {
+            // 'ratio' / 'diameter' / 'init'：以当前比值为准重算中心距
+            const raw = parseFloat(rNum.value);
+            let r = Number.isFinite(raw) ? round1(raw) : 3;
+            if (source === 'ratio') r = clamp(r, 2.5, 5);  // 仅手动输入比值时按规格约束
+            ratio = r;
+            pitch = Math.ceil(ratio * d);
+        }
+
+        // 滑块固定范围（HTML 已写死 min/max），只夹显示位置；数字框一律保留实际值
+        rSlider.value = clamp(ratio, 2.5, 5); rNum.value = ratio;
+        pSlider.value = clamp(pitch, 3, 100); pNum.value = pitch;
     }
 
     // 【新增】根据塔径(及当前弓高)动态刷新弓高/中降宽输入框的上下限（界面不显示提示文字）
@@ -403,11 +444,11 @@
         }
     }
 
-    // 绑定 Checkbox 的变更事件
+    // 绑定 Checkbox 的变更事件（孔中心距的「自定义」已移除，改由「中心距/孔径」联动）
     // 【修改】只在提交数据实际变化时才触发后台计算：
     //   勾选自定义（false→true）仅解除灰化、数值不变 → 不重算、不消耗次数；
     //   取消勾选（true→false）会把值恢复为默认值，数值变了才重算。
-    [chkEdge, chkCalm, chkSeam, chkPitch].forEach(chk => {
+    [chkEdge, chkCalm, chkSeam].forEach(chk => {
         if(chk) {
             chk.addEventListener('change', () => {
                 applyDefaults();
@@ -442,9 +483,10 @@
         }
     }
 
-    // 页面初始化：运行一次灰化检测、默认值计算与上下限计算
+    // 页面初始化：运行一次灰化检测、默认值计算、比值联动与上下限计算
     toggleCenterWidthInput();
     applyDefaults();
+    syncPitchLinkage('init');
     updateAreaRatioNotes();
     // 记录初始数据快照：此后只有与它不同的数据才需要触发计算
     lastCalcSnapshot = JSON.stringify(getVals());
