@@ -221,10 +221,12 @@
             </div>
 
             <div class="control-group">
-                <div class="control-header"><span title="= ⌈(中心距/孔径) × 孔径⌉，向上取整；也可直接修改，比值自动反算。滑块固定 3~100，数字框允许手输界外值">中心距 (mm)</span></div>
+                <div class="control-header"><span title="= ⌈(中心距/孔径) × 孔径⌉（向上取整到 0.5 mm）；也可直接手输 0.5 步长的小数（如 24.5），比值自动反算。滑块固定 3~100，数字框允许手输界外值">中心距 (mm)</span></div>
                 <div class="control-row">
-                    <input type="range" id="holePitch" min="3" max="100" step="1" value="24">
-                    <input type="number" id="num_holePitch" min="3" max="100" step="1" value="24">
+                    <input type="range" id="holePitch" min="3" max="100" step="0.5" value="24">
+                    <!-- 数字框不设 min/max：避免浏览器把 0.5 步长的小数或界外手输值判为无效而标红；
+                         范围约束只作用于滑块，提交后台的是数字框实际值 -->
+                    <input type="number" id="num_holePitch" step="0.5" value="24">
                 </div>
             </div>
             <!-- 调整后的参数顺序结束 -->
@@ -257,12 +259,17 @@
         const slider = document.getElementById(param);
         const numInput = document.getElementById('num_' + param);
         
-        const syncValues = (val) => {
-            if (slider) slider.value = val;
-            if (numInput) numInput.value = val;
+        // fromSlider：事件是否来自滑块。
+        // 关键：手输数字框时【绝不回写自身】——input[type=number] 的 value setter 会按
+        // "有效浮点数"规则净化字符串，"24." / "." / ".5" 这类输入中间态会被清空，
+        // 每按一次键就回写一次，小数点和小数永远打不进去。
+        const syncValues = (val, fromSlider = false) => {
+            const numeric = Number.isFinite(parseFloat(val));
+            if (slider && numeric) slider.value = val;          // 空串/中间态不写给滑块，避免滑块跳位
+            if (numInput && fromSlider) numInput.value = val;   // 只有拖滑块才同步数字框
             // 塔径变化重算动态默认值与上下限
             if (param === 'trayDiameter' || param === 'holeDiameter') applyDefaults();
-            // 「中心距/孔径 ↔ 孔中心距」双向联动：改其一另一个自动跟随，孔中心距恒向上取整
+            // 「中心距/孔径 ↔ 孔中心距」双向联动：改其一另一个自动跟随
             if (param === 'pitchRatio') syncPitchLinkage('ratio');
             else if (param === 'holePitch') syncPitchLinkage('pitch');
             else if (param === 'holeDiameter') syncPitchLinkage('diameter');
@@ -272,15 +279,39 @@
             updateAreaRatioNotes();
             // 仅当当前数据与「上次实际提交计算」的数据不同才触发计算
             //   注意：input 事件派发时 DOM 值已是新值，不能在回调里取「旧快照」比较
-            if (JSON.stringify(getVals()) !== lastCalcSnapshot) triggerRender();
+            //   输入中间态（空串 / "24." / "."）不提交后台，避免自动模式误触发一次 holePitch=0 的计算
+            if (numeric && JSON.stringify(getVals()) !== lastCalcSnapshot) triggerRender();
         };
 
         if (slider) { 
-            slider.addEventListener('input', (e) => { syncValues(e.target.value); }); 
+            slider.addEventListener('input', (e) => { syncValues(e.target.value, true); }); 
         }
         if (numInput) { 
-            numInput.addEventListener('input', (e) => { syncValues(e.target.value); }); 
+            numInput.addEventListener('input', (e) => { syncValues(e.target.value, false); }); 
         }
+    });
+
+    // 手输结束（失焦或回车）后再规范化，避免打断 "24." → "24.5" 的输入过程：
+    //   中心距圆整到 0.5 步长，比值圆整到 0.1 并夹到 2.5~5，然后刷新另一侧显示。
+    //   程序赋值不会触发 input 事件，因此不会再次进入上面的联动。
+    const clampNum = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    const round1Num = (v) => Math.round(v * 10) / 10;
+    const pitchNum = document.getElementById('num_holePitch');
+    const ratioNum = document.getElementById('num_pitchRatio');
+
+    pitchNum.addEventListener('change', () => {
+        const v = parseFloat(pitchNum.value);
+        if (!Number.isFinite(v)) return;
+        pitchNum.value = Math.round(v * 2) / 2;   // 圆整到 0.5 步长
+        syncPitchLinkage('pitch');
+        if (JSON.stringify(getVals()) !== lastCalcSnapshot) triggerRender();
+    });
+    ratioNum.addEventListener('change', () => {
+        const v = parseFloat(ratioNum.value);
+        if (!Number.isFinite(v)) return;
+        ratioNum.value = clampNum(round1Num(v), 2.5, 5);
+        syncPitchLinkage('ratio');
+        if (JSON.stringify(getVals()) !== lastCalcSnapshot) triggerRender();
     });
 
     // 动态默认值计算逻辑
@@ -315,12 +346,14 @@
         updateSizeConstraints();
     }
 
-    // 【新增】「中心距/孔径 (t/d)」与「孔中心距」双向联动
-    //   规则：孔中心距 = ⌈(中心距/孔径) × 孔径⌉，恒为整数。
-    //   - 改比值 / 改孔径 → 按当前比值重算孔中心距；手动输入比值时限定 2.5~5、步长 0.1。
-    //   - 直接改孔中心距 → 反算比值并如实显示，即使超出 2.5~5 也不夹取、不收敛中心距。
-    //   - 滑块范围固定（比值 2.5~5、中心距 3~100）；数字框允许手输界外值，
+    // 【修改】「中心距/孔径 (t/d)」与「孔中心距」双向联动，中心距步长 0.5
+    //   - 改比值 / 改孔径 → 中心距 = ⌈比值 × 孔径⌉，但向上取整到 0.5 的倍数（⌈2x⌉/2），
+    //     不再是整数；手动输入比值时限定 2.5~5、步长 0.1。
+    //   - 直接手输中心距 → 反算比值并如实显示（不夹取比值、不收敛中心距），
+    //     且【只更新比值侧，绝不回写中心距输入框】，否则 24.5 / .5 这类小数会被逐键吞掉。
+    //   - 滑块范围固定（比值 2.5~5、中心距 3~100，步长 0.5）；数字框允许手输界外值，
     //     提交后台的是数字框实际值，滑块只显示被范围夹住后的位置。
+    //   - 最终规范化（圆整到 0.5）放在数字框的 change 事件里做，输入过程中不做。
     //   注意：因向上取整且比值按 0.1 圆整，反算值是近似值，两者不严格互逆（属正常）。
     function syncPitchLinkage(source) {
         const d = parseFloat(document.getElementById('num_holeDiameter').value) || 8;
@@ -330,25 +363,30 @@
         const pNum    = document.getElementById('num_holePitch');
         const clamp  = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
         const round1 = (v) => Math.round(v * 10) / 10;
+        const ceilToHalf = (v) => Math.ceil(v * 2 - 1e-9) / 2;   // 向上取整到 0.5，带浮点容差
 
-        let ratio, pitch;
         if (source === 'pitch') {
+            // 手输中心距：保留输入框原值（含小数、含界外值），只刷新另一侧
             const raw = parseFloat(pNum.value);
-            if (!Number.isFinite(raw)) return;   // 用户正在清空输入框，暂不联动
-            pitch = Math.ceil(raw);              // 中心距恒向上取整；界外值原样保留，不收敛
-            ratio = round1(pitch / d);           // 反算比值：即使超界也如实显示
-        } else {
-            // 'ratio' / 'diameter' / 'init'：以当前比值为准重算中心距
-            const raw = parseFloat(rNum.value);
-            let r = Number.isFinite(raw) ? round1(raw) : 3;
-            if (source === 'ratio') r = clamp(r, 2.5, 5);  // 仅手动输入比值时按规格约束
-            ratio = r;
-            pitch = Math.ceil(ratio * d);
+            if (!Number.isFinite(raw)) return;   // 正在清空 / "24." 等中间态：不联动、不覆写
+            const ratio = round1(raw / d);
+            rSlider.value = clamp(ratio, 2.5, 5);
+            rNum.value = ratio;
+            pSlider.value = clamp(raw, 3, 100);
+            return;                              // 关键：不写 pNum.value，保住用户正在输入的小数
         }
 
-        // 滑块固定范围（HTML 已写死 min/max），只夹显示位置；数字框一律保留实际值
-        rSlider.value = clamp(ratio, 2.5, 5); rNum.value = ratio;
-        pSlider.value = clamp(pitch, 3, 100); pNum.value = pitch;
+        // 'ratio' / 'diameter' / 'init'：以当前比值为准重算中心距
+        const raw = parseFloat(rNum.value);
+        let r = Number.isFinite(raw) ? round1(raw) : 3;
+        if (source === 'ratio') r = clamp(r, 2.5, 5);  // 仅手动输入比值时按规格约束
+        const ratio = r;
+        const pitch = ceilToHalf(ratio * d);            // 向上取整到 0.5 步长
+
+        rSlider.value = clamp(ratio, 2.5, 5);
+        pSlider.value = clamp(pitch, 3, 100);
+        if (source !== 'ratio') rNum.value = ratio;    // 手输比值时不回写，避免打断 "3." 中间态
+        pNum.value = pitch;
     }
 
     // 【新增】根据塔径(及当前弓高)动态刷新弓高/中降宽输入框的上下限（界面不显示提示文字）
