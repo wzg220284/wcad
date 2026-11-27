@@ -213,6 +213,8 @@
 
     let currentMode = '板';
     let calcTriggerMode = 'manual';
+    // 上一次「实际提交给后台计算」的参数快照：用于判断当前数据是否真的变了
+    let lastCalcSnapshot = null;
 
     // Cloudflare Worker 地址
     const apiUrl = "/api/fenbuqi"; 
@@ -311,12 +313,14 @@
         }
     }
 
-    // 复选框变更 → 重算默认值并触发渲染
+    // 复选框变更 → 重算默认值；仅当提交数据实际变化时才触发计算
+    //   勾选自定义只解除灰化、数值不变 → 不重算、不消耗次数；
+    //   取消勾选会把值写回默认值，数值变了才重算。
     [chkEdge, chkL3, chkL4].forEach(chk => {
         if (chk) {
             chk.addEventListener('change', () => {
                 applyDefaults();
-                triggerRender();
+                if (JSON.stringify(getVals()) !== lastCalcSnapshot) triggerRender();
             });
         }
     });
@@ -333,7 +337,7 @@
                 if(param === 'N_beam') toggleBeamWidthInput(); // 如果是横梁数量，触发灰化检测
                 // 塔径 / L1 / L3 变化会连锁影响 e、L3、L4 的默认值
                 if(param === 'D' || param === 'a' || param === 'c') applyDefaults();
-                triggerRender(); 
+                if (JSON.stringify(getVals()) !== lastCalcSnapshot) triggerRender(); 
             }); 
         }
         if (numInput) { 
@@ -342,7 +346,7 @@
                 if(param === 'N_beam') toggleBeamWidthInput(); // 如果是横梁数量，触发灰化检测
                 // 塔径 / L1 / L3 变化会连锁影响 e、L3、L4 的默认值
                 if(param === 'D' || param === 'a' || param === 'c') applyDefaults();
-                triggerRender(); 
+                if (JSON.stringify(getVals()) !== lastCalcSnapshot) triggerRender(); 
             }); 
         }
     });
@@ -350,9 +354,11 @@
     // 页面加载完成后立即调用一次，确保初始状态正确
     toggleBeamWidthInput();
     applyDefaults();
+    // 记录初始数据快照：此后只有与它不同的数据才需要触发计算
+    lastCalcSnapshot = JSON.stringify(getVals());
 
-    document.getElementById('modeBoard').addEventListener('click', (e) => { currentMode = '板'; e.target.classList.add('active'); document.getElementById('modeSeam').classList.remove('active'); triggerRender(); });
-    document.getElementById('modeSeam').addEventListener('click', (e) => { currentMode = '缝'; e.target.classList.add('active'); document.getElementById('modeBoard').classList.remove('active'); triggerRender(); });
+    document.getElementById('modeBoard').addEventListener('click', (e) => { currentMode = '板'; e.target.classList.add('active'); document.getElementById('modeSeam').classList.remove('active'); if (JSON.stringify(getVals()) !== lastCalcSnapshot) triggerRender(); });
+    document.getElementById('modeSeam').addEventListener('click', (e) => { currentMode = '缝'; e.target.classList.add('active'); document.getElementById('modeBoard').classList.remove('active'); if (JSON.stringify(getVals()) !== lastCalcSnapshot) triggerRender(); });
 
     // 监听计算模式单选框切换
     document.querySelectorAll('input[name="calcTrigger"]').forEach(radio => {
@@ -423,6 +429,8 @@
             alert("请先填写序列号！");
             return;
         }
+        // 本批数据已提交计算，记录快照（自动模式下的去重基准）
+        lastCalcSnapshot = JSON.stringify(v);
 
         try {
             const response = await fetch(apiUrl, {
