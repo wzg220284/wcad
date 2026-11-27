@@ -31,8 +31,8 @@
         input[type="number"], input[type="password"], input[type="text"], select { width: 92px; padding: 5px; border: 1px solid #ccc; border-radius: 4px; text-align: center; font-family: inherit; box-sizing: border-box; }
         input:disabled { background-color: #e9ecef; cursor: not-allowed; }
 
-        /* 降液管几何行：固定三列（标签 / 输入框 / 占比数值），输入框位置不随数值宽度变化 */
-        .ratio-row { display: grid; grid-template-columns: 1fr 92px 70px; align-items: center; column-gap: 8px; }
+        /* 降液管几何行：固定三列（标签 / 占比数值 / 输入框），输入框位置不随数值宽度变化 */
+        .ratio-row { display: grid; grid-template-columns: 1fr 70px 92px; align-items: center; column-gap: 8px; }
         .ratio-row input[type="number"] { width: 92px; justify-self: center; }
         .area-note { font-size: 12px; color: #0d6efd; font-weight: bold; font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
         
@@ -145,13 +145,13 @@
             <div class="control-group" style="background: #fff8f8; padding: 6px 8px; border-radius: 6px; border: 1px solid #ffdfdf;">
                 <div class="ratio-row">
                     <span style="color: #d9534f; font-weight: bold; font-size: 13px;">弓高 (mm)</span>
-                    <input type="number" id="num_bowHeight" step="5" min="0" max="900" value="100">
                     <span class="area-note" id="bowRatioVal" title="弓形降液管面积占塔截面积的比例；单溢流按 1 个弓形、双溢流按 2 个弓形计">0.00%</span>
+                    <input type="number" id="num_bowHeight" step="5" min="0" max="900" value="100">
                 </div>
                 <div class="ratio-row" style="margin-top: 6px;">
                     <span id="centerWidthLabel" style="color: #d9534f; font-weight: bold; font-size: 13px;">中降宽 (mm)</span>
-                    <input type="number" id="num_centerWidth" step="5" min="0" max="1400" value="100" disabled>
                     <span class="area-note" id="centerRatioVal" title="中间降液管（圆内条带）面积占塔截面积的比例，仅双溢流有效；单溢流显示 --">--</span>
+                    <input type="number" id="num_centerWidth" step="5" min="0" max="1400" value="100" disabled>
                 </div>
             </div>
 
