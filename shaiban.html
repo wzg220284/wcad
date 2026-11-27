@@ -25,13 +25,15 @@
         .control-header { display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 500; }
         .control-row { display: flex; align-items: center; gap: 10px; }
         input[type="range"] { flex: 1; cursor: pointer; }
-        input[type="number"], input[type="password"], input[type="text"], select { width: 80px; padding: 5px; border: 1px solid #ccc; border-radius: 4px; text-align: center; font-family: inherit;}
-        select { width: 80px; text-align: center; }
+        /* 统一输入控件盒模型与宽度：number 原本是 content-box(80 + 左右 padding 10 + 边框 2 = 92px)，
+           而 select 默认 border-box 只有 80px，导致溢流数/网格方向下拉框比数字框窄 12px。
+           统一为 border-box + 92px 后，下拉框与所有数字输入框实际宽度完全一致，且数字框视觉尺寸不变。 */
+        input[type="number"], input[type="password"], input[type="text"], select { width: 92px; padding: 5px; border: 1px solid #ccc; border-radius: 4px; text-align: center; font-family: inherit; box-sizing: border-box; }
         input:disabled { background-color: #e9ecef; cursor: not-allowed; }
 
         /* 降液管几何行：固定三列（标签 / 输入框 / 占比数值），输入框位置不随数值宽度变化 */
         .ratio-row { display: grid; grid-template-columns: 1fr 92px 70px; align-items: center; column-gap: 8px; }
-        .ratio-row input[type="number"] { width: 80px; justify-self: center; }
+        .ratio-row input[type="number"] { width: 92px; justify-self: center; }
         .area-note { font-size: 12px; color: #0d6efd; font-weight: bold; font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
         
         /* 序列号与计算按钮 */
