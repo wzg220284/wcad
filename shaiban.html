@@ -28,6 +28,11 @@
         input[type="number"], input[type="password"], input[type="text"], select { width: 80px; padding: 5px; border: 1px solid #ccc; border-radius: 4px; text-align: center; font-family: inherit;}
         select { width: 80px; text-align: center; }
         input:disabled { background-color: #e9ecef; cursor: not-allowed; }
+
+        /* 降液管几何行：固定三列（标签 / 输入框 / 占比数值），输入框位置不随数值宽度变化 */
+        .ratio-row { display: grid; grid-template-columns: 1fr 92px 70px; align-items: center; column-gap: 8px; }
+        .ratio-row input[type="number"] { width: 80px; justify-self: center; }
+        .area-note { font-size: 12px; color: #0d6efd; font-weight: bold; font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
         
         /* 序列号与计算按钮 */
         .calc-mode-box { background: #eef2f5; padding: 10px; border-radius: 6px; margin-bottom: 5px; border: 1px solid #dce3e9; }
@@ -136,13 +141,15 @@
             
             <!-- 【修改】降液管几何：由占比(%) 改为绝对尺寸(mm)，上下限随塔径变化，仅保留数字输入框，标签与输入框同行 -->
             <div class="control-group" style="background: #fff8f8; padding: 6px 8px; border-radius: 6px; border: 1px solid #ffdfdf;">
-                <div class="control-row" style="justify-content: space-between;">
+                <div class="ratio-row">
                     <span style="color: #d9534f; font-weight: bold; font-size: 13px;">弓高 (mm)</span>
                     <input type="number" id="num_bowHeight" step="5" min="0" max="900" value="100">
+                    <span class="area-note" id="bowRatioVal" title="弓形降液管面积占塔截面积的比例；单溢流按 1 个弓形、双溢流按 2 个弓形计">0.00%</span>
                 </div>
-                <div class="control-row" style="justify-content: space-between; margin-top: 6px;">
+                <div class="ratio-row" style="margin-top: 6px;">
                     <span id="centerWidthLabel" style="color: #d9534f; font-weight: bold; font-size: 13px;">中降宽 (mm)</span>
                     <input type="number" id="num_centerWidth" step="5" min="0" max="1400" value="100" disabled>
+                    <span class="area-note" id="centerRatioVal" title="中间降液管（圆内条带）面积占塔截面积的比例，仅双溢流有效；单溢流显示 --">--</span>
                 </div>
             </div>
 
@@ -203,7 +210,12 @@
             </div>
 
             <div class="control-group">
-                <div class="control-header"><span>孔中心距 (mm)</span></div>
+                <div class="control-header">
+                    <span>孔中心距 (mm) 默认3倍孔径向上取整</span>
+                    <label style="font-size: 12px; font-weight: normal; cursor: pointer;">
+                        <input type="checkbox" id="chk_holePitch"> 自定义
+                    </label>
+                </div>
                 <div class="control-row">
                     <input type="range" id="holePitch" min="3" max="60" step="1" value="24">
                     <input type="number" id="num_holePitch" step="1" value="24">
@@ -226,6 +238,7 @@
     const chkEdge = document.getElementById('chk_edgeMargin');
     const chkCalm = document.getElementById('chk_calmZone');
     const chkSeam = document.getElementById('chk_seamWidth');
+    const chkPitch = document.getElementById('chk_holePitch');
 
     // 【修改】downcomerRatio / centerRatio 改为绝对尺寸参数 bowHeight(弓高mm) / centerWidth(中降宽mm)
     //        这两个参数不再配滑动条，仅有数字输入框；其余参数保持滑动条+数字框双向绑定
@@ -238,10 +251,12 @@
         const syncValues = (val) => {
             if (slider) slider.value = val;
             if (numInput) numInput.value = val;
-            // 如果改变的是塔径，则触发动态默认值与上下限重算
-            if (param === 'trayDiameter') applyDefaults();
+            // 塔径变化重算动态默认值与上下限；孔径变化需重算「孔中心距 = ⌈3 倍孔径⌉」默认值
+            if (param === 'trayDiameter' || param === 'holeDiameter') applyDefaults();
             // 弓高决定两侧弦间距，变化时同步刷新中降宽上限
             if (param === 'bowHeight') updateSizeConstraints();
+            // 注释为纯前端几何计算，任何参数变化都实时刷新（不受手动/自动模式限制）
+            updateAreaRatioNotes();
             triggerRender();
         };
 
@@ -275,10 +290,15 @@
         // 3. 水平拼缝规则
         let seam = 65;
 
+        // 4. 孔中心距规则：默认取 3 倍孔径并「往上圆整至整数」（如 8mm→24，8.5mm→26）
+        const holeD = parseFloat(document.getElementById('num_holeDiameter').value) || 8;
+        const pitchDefault = Math.ceil(3 * holeD);
+
         // 刷新状态和值
         updateParamStatus('edgeMargin', edge, chkEdge.checked);
         updateParamStatus('calmZone', calm, chkCalm.checked);
         updateParamStatus('seamWidth', seam, chkSeam.checked);
+        updateParamStatus('holePitch', pitchDefault, chkPitch.checked);
 
         // 【新增】弓高 / 中降宽的上下限随塔径变化
         updateSizeConstraints();
@@ -304,6 +324,50 @@
         if (Number.isFinite(bv) && bv > trayR) bow.value = Math.round(trayR);
         const cv = parseFloat(cw.value);
         if (Number.isFinite(cv) && cv > centerMax) cw.value = Math.round(centerMax);
+    }
+
+    // 【新增】输入框后的面积占比注释（纯前端几何计算，不调用后台、不消耗计算次数）
+    //   1) 弓形面积（半径 R、弓高 h）：A = R²·arccos((R-h)/R) - (R-h)·√(2Rh - h²)
+    //   2) 中间降液管为圆内宽度 W 的竖直条带：A = 2·[a√(R²-a²) + R²·asin(a/R)]，a = W/2
+    //   3) 塔截面积 A塔 = πR²；单溢流取 1 个弓形，双溢流取 2 个弓形
+    function segmentArea(R, h) {
+        if (!(R > 0) || !(h > 0)) return 0;
+        const hh = Math.min(h, 2 * R);
+        const d = R - hh;                                   // 圆心到弦的距离（带符号）
+        const cosVal = Math.max(-1, Math.min(1, d / R));
+        return R * R * Math.acos(cosVal) - d * Math.sqrt(Math.max(0, R * R - d * d));
+    }
+
+    function centerStripArea(R, W) {
+        if (!(R > 0) || !(W > 0)) return 0;
+        const a = Math.min(W / 2, R);
+        return 2 * (a * Math.sqrt(Math.max(0, R * R - a * a)) + R * R * Math.asin(a / R));
+    }
+
+    function updateAreaRatioNotes() {
+        const D = parseFloat(document.getElementById('num_trayDiameter').value) || 0;
+        const R = D / 2;
+        const bowH = parseFloat(document.getElementById('num_bowHeight').value) || 0;
+        const cw = parseFloat(document.getElementById('num_centerWidth').value) || 0;
+        const isDouble = document.getElementById('trayType').value === 'double';
+        const totalArea = Math.PI * R * R;
+
+        const bowValEl = document.getElementById('bowRatioVal');
+        const centerValEl = document.getElementById('centerRatioVal');
+        if (!bowValEl || !centerValEl) return;
+
+        const bowCount = isDouble ? 2 : 1;
+        const bowPct = totalArea > 0 ? (bowCount * segmentArea(R, bowH) / totalArea * 100) : 0;
+        bowValEl.textContent = bowPct.toFixed(2) + '%';
+
+        if (isDouble) {
+            const centerPct = totalArea > 0 ? (centerStripArea(R, cw) / totalArea * 100) : 0;
+            centerValEl.textContent = centerPct.toFixed(2) + '%';
+            centerValEl.style.color = '';
+        } else {
+            centerValEl.textContent = '--';
+            centerValEl.style.color = '#a0a0a0';
+        }
     }
 
     // 更新参数输入框的样式和值
@@ -334,7 +398,7 @@
     }
 
     // 绑定 Checkbox 的变更事件
-    [chkEdge, chkCalm, chkSeam].forEach(chk => {
+    [chkEdge, chkCalm, chkSeam, chkPitch].forEach(chk => {
         if(chk) {
             chk.addEventListener('change', () => {
                 applyDefaults();
@@ -372,10 +436,12 @@
     // 页面初始化：运行一次灰化检测、默认值计算与上下限计算
     toggleCenterWidthInput();
     applyDefaults();
+    updateAreaRatioNotes();
 
     // 塔板选型切换事件
     document.getElementById('trayType').addEventListener('change', (e) => {
         toggleCenterWidthInput();
+        updateAreaRatioNotes();
         triggerRender();
     });
     
