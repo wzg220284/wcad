@@ -151,7 +151,7 @@
                 <div class="ratio-row" style="margin-top: 6px;">
                     <span id="centerWidthLabel" style="color: #d9534f; font-weight: bold; font-size: 13px;">中降宽 (mm)</span>
                     <span class="area-note" id="centerRatioVal" title="中间降液管（圆内条带）面积占塔截面积的比例，仅双溢流有效；单溢流显示 --">--</span>
-                    <input type="number" id="num_centerWidth" step="5" min="0" max="1400" value="100" disabled>
+                    <input type="number" id="num_centerWidth" step="5" min="0" max="1400" value="0" disabled>
                 </div>
             </div>
 
@@ -171,14 +171,14 @@
 
             <div class="control-group">
                 <div class="control-header">
-                    <span>安定区宽 (mm) 默认支持板宽+50</span>
+                    <span>安定区宽 (mm) 默认支持板宽+40+6mm降液板厚</span>
                     <label style="font-size: 12px; font-weight: normal; cursor: pointer;">
                         <input type="checkbox" id="chk_calmZone"> 自定义
                     </label>
                 </div>
                 <div class="control-row">
                     <input type="range" id="calmZone" min="0" max="150" value="100">
-                    <input type="number" id="num_calmZone" value="100">
+                    <input type="number" id="num_calmZone" value="96">
                 </div>
             </div>
 
@@ -328,10 +328,10 @@
         else edge = 130;
 
         // 2. 堰侧安定区规则
-        let calm = 90;
-        if (D <= 1200) calm = 90;
-        else if (D <= 2000) calm = 100;
-        else calm = 110;
+        let calm = 86;
+        if (D <= 1200) calm = 86;
+        else if (D <= 2000) calm = 96;
+        else calm = 106;
 
         // 3. 水平拼缝规则
         let seam = 65;
